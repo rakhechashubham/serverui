@@ -1,0 +1,69 @@
+name: serverui
+
+services:
+  web:
+    image: serverui-web:prod
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+      target: runner
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      SERVER_INTERNAL_URL: http://server:8080
+    depends_on:
+      - server
+    networks:
+      - serverui-network
+    restart: unless-stopped
+
+  server:
+    image: serverui-server:prod
+    build:
+      context: ../..
+      dockerfile: apps/server/Dockerfile
+      target: runner
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    environment:
+      HTTP_PORT: "8080"
+      SERVERUI_CREDENTIAL_ENCRYPTION_KEY: ${SERVERUI_CREDENTIAL_ENCRYPTION_KEY:-}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-serverui}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example_password}
+      POSTGRES_DB: ${POSTGRES_DB:-serverui}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - serverui-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-serverui}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example_password}
+      POSTGRES_DB: ${POSTGRES_DB:-serverui}
+    volumes:
+      - serverui-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - serverui-network
+    restart: unless-stopped
+
+networks:
+  serverui-network:
+    name: serverui-network
+
+volumes:
+  serverui-postgres-data:
+    name: serverui-postgres-data

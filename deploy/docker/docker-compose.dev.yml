@@ -1,0 +1,25 @@
+services:
+  web:
+    image: serverui-web:dev
+    build:
+      target: development
+    volumes:
+      - ../../apps/web:/app
+      - web_node_modules:/app/node_modules
+    environment:
+      NODE_ENV: development
+      WATCHPACK_POLLING: "true"
+      SERVER_INTERNAL_URL: http://server:8080
+    command: sh -c "npm install --no-audit --no-fund && npm run dev"
+
+  server:
+    image: serverui-server:dev
+    build:
+      target: development
+    entrypoint: ["go"]
+    command: ["run", "./cmd/server"]
+    volumes:
+      - ../../apps/server:/src
+
+volumes:
+  web_node_modules:

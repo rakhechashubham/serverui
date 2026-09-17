@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+echo "pre-commit: format-check"
+make format-check
+
+echo "pre-commit: lint"
+make lint
+
+echo "pre-commit: test"
+make test
+
+echo "pre-commit: ok"

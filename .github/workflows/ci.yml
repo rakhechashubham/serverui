@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/server/go.mod
+          cache-dependency-path: apps/server/go.sum
+      - name: Check gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "Go files need formatting:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go build -o /tmp/serverui-server ./cmd/server
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images
+        run: docker compose -f deploy/docker/docker-compose.yml build
+
+  secrets:
+    name: Secret files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject committed env and key files
+        run: |
+          set -euo pipefail
+          tracked="$(git ls-files | grep -E '(^|/)\.env($|\.)|(^|/)id_(rsa|ed25519|dsa|ecdsa)($|\.)|\.pem$|\.key$' || true)"
+          allowed="$(echo "$tracked" | grep -E '\.env\.example$' || true)"
+          unexpected="$(comm -23 <(echo "$tracked" | sort) <(echo "$allowed" | sort) | sed '/^$/d')"
+          if [ -n "$unexpected" ]; then
+            echo "Refusing to ship secret-like files:"
+            echo "$unexpected"
+            exit 1
+          fi

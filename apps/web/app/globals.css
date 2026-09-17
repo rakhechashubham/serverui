@@ -1,0 +1,268 @@
+@import "tailwindcss";
+
+:root,
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #1b2430;
+  --foreground: #edf2f7;
+  --topbar-bg: rgba(0, 0, 0, 0.28);
+  --topbar-fg: rgba(255, 255, 255, 0.92);
+  --topbar-muted: rgba(255, 255, 255, 0.62);
+  --toggle-bg: rgba(255, 255, 255, 0.12);
+  --toggle-active: rgba(255, 255, 255, 0.92);
+  --toggle-active-fg: #111111;
+  --app-bg: #1c1c1e;
+  --app-bg-2: #242426;
+  --app-sidebar: #323236;
+  --app-fg: #f2f2f7;
+  --app-title: #ffffff;
+  --app-muted: #a1a1a6;
+  --app-card: #2c2c2e;
+  --app-input: #3a3a3c;
+  --app-border: rgba(255, 255, 255, 0.08);
+  --app-hover: rgba(255, 255, 255, 0.06);
+  --app-selected: rgba(10, 132, 255, 0.28);
+  --window-bg: #1c1c1e;
+  --window-header: #2c2c2e;
+  --window-header-inactive: #252528;
+  --window-title: rgba(255, 255, 255, 0.82);
+  --window-border: rgba(255, 255, 255, 0.1);
+  --menu-bg: rgba(44, 44, 46, 0.92);
+  --menu-fg: #f2f2f7;
+  --menu-border: rgba(255, 255, 255, 0.12);
+  --desktop-scrim: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.22),
+    transparent,
+    rgba(0, 0, 0, 0.28)
+  );
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  --background: #c5d4e4;
+  --foreground: #1d1d1f;
+  --topbar-bg: rgba(255, 255, 255, 0.58);
+  --topbar-fg: #1d1d1f;
+  --topbar-muted: rgba(29, 29, 31, 0.58);
+  --toggle-bg: rgba(0, 0, 0, 0.08);
+  --toggle-active: #ffffff;
+  --toggle-active-fg: #1d1d1f;
+  --app-bg: #f4f5f7;
+  --app-bg-2: #eef0f3;
+  --app-sidebar: #6d7278;
+  --app-fg: #1d1d1f;
+  --app-title: #111111;
+  --app-muted: #6b7280;
+  --app-card: #ffffff;
+  --app-input: #ffffff;
+  --app-border: rgba(0, 0, 0, 0.08);
+  --app-hover: rgba(14, 165, 233, 0.08);
+  --app-selected: rgba(14, 165, 233, 0.16);
+  --window-bg: #f6f6f7;
+  --window-header: #ececed;
+  --window-header-inactive: #f3f3f4;
+  --window-title: #3f3f46;
+  --window-border: rgba(255, 255, 255, 0.7);
+  --menu-bg: rgba(255, 255, 255, 0.9);
+  --menu-fg: #1d1d1f;
+  --menu-border: rgba(0, 0, 0, 0.1);
+  --desktop-scrim: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.18),
+    transparent,
+    rgba(0, 0, 0, 0.12)
+  );
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+body {
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.sui-app {
+  background: var(--app-bg);
+  color: var(--app-fg);
+}
+
+.sui-app-2 {
+  background: var(--app-bg-2);
+}
+
+.sui-title {
+  color: var(--app-title);
+}
+
+.sui-muted {
+  color: var(--app-muted);
+}
+
+.sui-card {
+  background: var(--app-card);
+  border: 1px solid var(--app-border);
+}
+
+.sui-input {
+  background: var(--app-input);
+  border: 1px solid var(--app-border);
+  color: var(--app-fg);
+}
+
+.sui-hairline {
+  border-color: var(--app-border);
+}
+
+.sui-hover:hover {
+  background: var(--app-hover);
+}
+
+.sui-selected {
+  background: var(--app-selected);
+}
+
+.sui-menu {
+  background: var(--menu-bg);
+  color: var(--menu-fg);
+  border-color: var(--menu-border);
+}
+
+@keyframes window-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-window-in {
+  animation: window-in 140ms ease-out;
+}
+
+.animate-menu-in {
+  animation: menu-in 120ms ease-out;
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes boot-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes desktop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-overlay-in {
+  animation: overlay-in 160ms ease-out;
+}
+
+.animate-modal-in {
+  animation: modal-in 180ms ease-out;
+}
+
+.animate-card-in {
+  animation: card-in 220ms ease-out;
+}
+
+.animate-boot-in {
+  animation: boot-in 280ms ease-out;
+}
+
+.animate-desktop-in {
+  animation: desktop-in 220ms ease-out;
+}
+
+.sui-server-input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.6rem 0.8rem;
+  font-size: 13px;
+  color: #fff;
+  outline: none;
+}
+
+.sui-server-input::placeholder {
+  color: rgba(255, 255, 255, 0.32);
+}
+
+.sui-server-input:focus {
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+}
+
+.sui-server-input option {
+  color: #111;
+}

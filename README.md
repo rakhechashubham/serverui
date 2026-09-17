@@ -6,6 +6,8 @@ It presents a Linux-inspired desktop in the browser. You add SSH servers, connec
 Files, Terminal, and live CPU/RAM/disk metrics against the machine you selected. The
 browser never opens SSH. A Go backend stores encrypted credentials and dials each host.
 
+![ServerUI desktop with the file manager open](docs/images/desktop.jpg)
+
 ## Features
 
 Working in this repository:
@@ -67,7 +69,8 @@ serverui/
 ├── deploy/
 │   └── docker/              Compose files
 ├── docs/
-│   └── architecture.md
+│   ├── architecture.md
+│   └── images/
 ├── scripts/
 │   └── pre-commit
 ├── .githooks/

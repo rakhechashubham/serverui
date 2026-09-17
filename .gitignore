@@ -33,6 +33,7 @@ next-env.d.ts
 .DS_Store
 .AppleDouble
 .LSOverride
+Screenshot*.png
 
 # IDE / editor
 .idea/

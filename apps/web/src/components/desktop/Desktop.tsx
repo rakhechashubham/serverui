@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type MouseEvent, type PointerEvent } from "react";
 import { ServerProvider } from "@/src/lib/api/server-context";
+import { isDesktopRuntime } from "@/src/lib/runtime";
 import { useSession } from "@/src/lib/session";
 import { DesktopContextMenu } from "@/src/components/desktop/DesktopContextMenu";
 import { Dock } from "@/src/components/desktop/Dock";
@@ -22,16 +23,55 @@ export function Desktop() {
 
 function DesktopShell() {
   const { logOut } = useSession();
-  const { clearFocus, windows } = useWindowManager();
+  const { clearFocus, windows, focusedId, closeWindow, openWindow } = useWindowManager();
   const fullscreen = windows.some((item) => item.maximized && !item.minimized);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [notice, setNotice] = useState(false);
+  const desktopRuntime = isDesktopRuntime();
 
   useEffect(() => {
     if (!notice) return;
     const id = window.setTimeout(() => setNotice(false), 1600);
     return () => window.clearTimeout(id);
   }, [notice]);
+
+  useEffect(() => {
+    function isTypingTarget(target: EventTarget | null) {
+      if (!(target instanceof HTMLElement)) return false;
+      if (target.closest(".xterm") || target.closest(".xterm-helper-textarea")) return true;
+      const tag = target.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable;
+    }
+
+    function onKey(event: KeyboardEvent) {
+      const meta = event.metaKey || event.ctrlKey;
+      if (event.key === "Escape") {
+        setMenu(null);
+        clearFocus();
+        return;
+      }
+      if (!meta) return;
+      if (event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        window.dispatchEvent(new Event("serverui:toggle-server-menu"));
+        return;
+      }
+      if (event.key.toLowerCase() === ",") {
+        event.preventDefault();
+        openWindow("settings");
+        return;
+      }
+      if (event.key.toLowerCase() === "w") {
+        if (isTypingTarget(event.target)) return;
+        if (!focusedId) return;
+        event.preventDefault();
+        closeWindow(focusedId);
+      }
+    }
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [clearFocus, closeWindow, focusedId, openWindow]);
 
   function showComingSoon() {
     setNotice(true);
@@ -91,7 +131,7 @@ function DesktopShell() {
         <span className="mt-2 block text-[13px] leading-5 text-white/85">
           Your servers.
           <br />
-          In your browser.
+          {desktopRuntime ? "On your desktop." : "In your browser."}
         </span>
       </p>
       <p className="pointer-events-none absolute bottom-28 left-6 z-10 max-w-[9rem] text-[13px] leading-5 text-white/80 drop-shadow">
@@ -101,7 +141,7 @@ function DesktopShell() {
         <br />
         Monitor
         <br />
-        From anywhere.
+        {desktopRuntime ? "Locally." : "From anywhere."}
       </p>
       <div
         className={`absolute inset-x-0 top-8 bottom-0 ${fullscreen ? "z-40" : "z-20"}`}

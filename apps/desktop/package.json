@@ -1,0 +1,16 @@
+{
+  "name": "serverui-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ServerUI desktop shell (Tauri)",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:unsigned": "tauri build --config src-tauri/tauri.unsigned.conf.json",
+    "sync-version": "node ./scripts/sync-version.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.1"
+  }
+}

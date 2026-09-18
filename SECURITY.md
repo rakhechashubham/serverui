@@ -40,6 +40,20 @@ openssl rand -hex 32
 Copy `.env.example` to `.env` and set the value, or run `make setup-env`. Never commit
 the real key.
 
+Rules that must remain true across web and desktop builds:
+
+- Secrets are submitted only on create/update requests, then encrypted server-side.
+- GET/list responses never include passwords or private keys.
+- The browser must not keep SSH secrets or the local API token in `localStorage`.
+- Do not log plaintext credentials, decrypted keys, or local auth tokens.
+- SSH dialing stays in the Go backend (`internal/ssh`), not in UI code.
+- Desktop binds the API to loopback and requires a per-launch local token.
+
+Desktop master-key placement uses the OS keychain when available
+(`com.serverui.desktop`). SSH secrets remain AES-256-GCM ciphertext in
+PostgreSQL. See [docs/desktop-security.md](docs/desktop-security.md) and
+[docs/desktop-storage.md](docs/desktop-storage.md).
+
 Enable GitHub Secret Scanning on the public repository. Local Git hooks and CI also
 reject committed `.env` and private-key files, but they are not a substitute for
 responsible disclosure.

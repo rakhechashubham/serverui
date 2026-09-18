@@ -1,0 +1,316 @@
+name: Desktop Release
+
+# Intentional releases only: push a SemVer tag (vMAJOR.MINOR.PATCH).
+# Does not publish from pushes to main.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to rebuild (e.g. v0.1.0). Leave empty when triggered by tag push."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-tag:
+    name: Validate version tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      updater_key: ${{ steps.meta.outputs.updater_key }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag and version
+        id: meta
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag must match vMAJOR.MINOR.PATCH (got: $TAG)"
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          CONF_VERSION="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
+          if [[ "$VERSION" != "$CONF_VERSION" ]]; then
+            echo "Tag version $VERSION does not match tauri.conf.json version $CONF_VERSION"
+            echo "Bump with: node apps/desktop/scripts/sync-version.mjs $VERSION"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "updater_key=present" >> "$GITHUB_OUTPUT"
+          else
+            echo "updater_key=missing" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Releasing ServerUI $VERSION ($TAG)"
+
+  build:
+    name: ${{ matrix.name }}
+    needs: validate-tag
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            runner: macos-14
+            args: --bundles dmg
+            artifact_os: macos-arm64
+            goos: darwin
+            goarch: arm64
+          - name: Linux x64
+            runner: ubuntu-22.04
+            args: --bundles appimage,deb
+            artifact_os: linux-x64
+            goos: linux
+            goarch: amd64
+          - name: Windows x64
+            runner: windows-latest
+            args: --bundles nsis,msi
+            artifact_os: windows-x64
+            goos: windows
+            goarch: amd64
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate-tag.outputs.tag }}
+
+      - name: Install Linux WebKit dependencies
+        if: matrix.goos == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            apps/web/package-lock.json
+            apps/desktop/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/server/go.mod
+          cache-dependency-path: apps/server/go.sum
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: |
+          npm ci --prefix apps/web
+          npm ci --prefix apps/desktop
+
+      - name: Build Go sidecar
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          chmod +x apps/desktop/scripts/prepare-sidecar.sh
+          rm -f bin/serverui-server bin/serverui-server.exe
+          apps/desktop/scripts/prepare-sidecar.sh
+
+      - name: Import Apple signing certificate (optional)
+        if: matrix.goos == 'darwin'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${APPLE_CERTIFICATE:-}" ]]; then
+            echo "APPLE_CERTIFICATE not set; macOS build will be unsigned"
+            exit 0
+          fi
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Build Tauri app
+        working-directory: apps/desktop
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "Updater signing key present; building with createUpdaterArtifacts"
+            npm run build -- ${{ matrix.args }}
+          else
+            echo "No TAURI_SIGNING_PRIVATE_KEY secret; building with updater artifacts disabled"
+            npm run build:unsigned -- ${{ matrix.args }}
+          fi
+
+      - name: Collect and rename artifacts
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.validate-tag.outputs.version }}"
+          OUT="dist/release/${{ matrix.artifact_os }}"
+          mkdir -p "$OUT"
+          BUNDLE="apps/desktop/src-tauri/target/release/bundle"
+          shopt -s nullglob
+          for f in \
+            "$BUNDLE"/dmg/*.dmg \
+            "$BUNDLE"/macos/* \
+            "$BUNDLE"/nsis/* \
+            "$BUNDLE"/msi/* \
+            "$BUNDLE"/appimage/* \
+            "$BUNDLE"/deb/*.deb
+          do
+            [[ -f "$f" ]] || continue
+            base="$(basename "$f")"
+            if [[ "$base" == *.dmg ]]; then
+              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.dmg"
+            elif [[ "$base" == *.app.tar.gz ]]; then
+              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.app.tar.gz"
+            elif [[ "$base" == *.app.tar.gz.sig ]]; then
+              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.app.tar.gz.sig"
+            elif [[ "$base" == *-setup.exe ]]; then
+              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}-setup.exe"
+            elif [[ "$base" == *-setup.exe.sig ]]; then
+              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}-setup.exe.sig"
+            elif [[ "$base" == *.msi ]]; then
+              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.msi"
+            elif [[ "$base" == *.msi.sig ]]; then
+              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.msi.sig"
+            elif [[ "$base" == *.AppImage ]]; then
+              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.AppImage"
+            elif [[ "$base" == *.AppImage.sig ]]; then
+              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.AppImage.sig"
+            elif [[ "$base" == *.deb ]]; then
+              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.deb"
+            else
+              # Skip intermediate build files (e.g. raw .app directories already filtered by -f)
+              case "$base" in
+                *.sig) cp "$f" "$OUT/$base" ;;
+              esac
+            fi
+          done
+          ls -la "$OUT"
+
+      - name: Upload platform artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.artifact_os }}
+          path: dist/release/${{ matrix.artifact_os }}/*
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish GitHub Release
+    needs: [validate-tag, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate-tag.outputs.tag }}
+
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist/release
+
+      - name: Flatten artifacts, checksums, updater JSON
+        env:
+          VERSION: ${{ needs.validate-tag.outputs.version }}
+          TAG: ${{ needs.validate-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/publish
+          find dist/release -type f -print0 | while IFS= read -r -d '' f; do
+            cp "$f" "dist/publish/$(basename "$f")"
+          done
+          cd dist/publish
+          : > "ServerUI-${VERSION}-SHA256SUMS.txt"
+          for f in *; do
+            [[ -f "$f" ]] || continue
+            [[ "$f" == *-SHA256SUMS.txt ]] && continue
+            [[ "$f" == latest.json ]] && continue
+            sha256sum "$f" >> "ServerUI-${VERSION}-SHA256SUMS.txt"
+          done
+          echo "Checksums:"
+          cat "ServerUI-${VERSION}-SHA256SUMS.txt"
+          cd ../..
+          node scripts/generate-updater-latest-json.mjs \
+            --version "$VERSION" \
+            --tag "$TAG" \
+            --repo "${{ github.repository }}" \
+            --dir dist/publish
+          ls -la dist/publish
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate-tag.outputs.tag }}
+          name: ServerUI ${{ needs.validate-tag.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## ServerUI ${{ needs.validate-tag.outputs.version }}
+
+            Download the installer for your platform below. Verify integrity with `ServerUI-${{ needs.validate-tag.outputs.version }}-SHA256SUMS.txt`.
+
+            ```bash
+            shasum -a 256 -c ServerUI-${{ needs.validate-tag.outputs.version }}-SHA256SUMS.txt
+            # or: sha256sum -c ServerUI-${{ needs.validate-tag.outputs.version }}-SHA256SUMS.txt
+            ```
+
+            See [docs/releases.md](https://github.com/${{ github.repository }}/blob/${{ needs.validate-tag.outputs.tag }}/docs/releases.md).
+
+            ### Installers
+            - macOS Apple Silicon: `.dmg`
+            - Windows x64: NSIS `-setup.exe` and `.msi`
+            - Linux x64: `.AppImage` and `.deb`
+
+            Updater signing: **${{ needs.validate-tag.outputs.updater_key }}** (`TAURI_SIGNING_PRIVATE_KEY`).
+            When present, `latest.json` and `.sig` files are included for in-app updates.
+          files: dist/publish/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

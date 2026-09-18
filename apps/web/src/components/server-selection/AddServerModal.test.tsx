@@ -9,7 +9,7 @@ describe("AddServerModal", () => {
     const onSubmit = vi.fn();
 
     render(<AddServerModal onClose={() => undefined} onSubmit={onSubmit} />);
-    await user.click(screen.getByRole("button", { name: "Add Server" }));
+    await user.click(screen.getByRole("button", { name: "Save Server" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Server name, host, and username are required.",
@@ -27,18 +27,36 @@ describe("AddServerModal", () => {
     await user.type(screen.getByLabelText("Host / IP"), "203.0.113.10");
     await user.type(screen.getByLabelText("Username"), "deploy");
     await user.type(screen.getByLabelText("Password"), "example-pass");
-    await user.click(screen.getByRole("button", { name: "Add Server" }));
+    await user.click(screen.getByRole("button", { name: "Save Server" }));
 
-    expect(onSubmit).toHaveBeenCalledWith({
-      name: "Edge Lab",
-      address: "203.0.113.10",
-      hostname: "203.0.113.10",
-      sshPort: 22,
-      username: "deploy",
-      authType: "password",
-      password: "example-pass",
-      privateKey: undefined,
-    });
+    expect(onSubmit).toHaveBeenCalledWith(
+      {
+        name: "Edge Lab",
+        address: "203.0.113.10",
+        hostname: "203.0.113.10",
+        sshPort: 22,
+        username: "deploy",
+        authType: "password",
+        password: "example-pass",
+        privateKey: undefined,
+      },
+      { connect: false },
+    );
+  });
+
+  it("offers save and connect on first-run", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+
+    render(<AddServerModal connectAfterSave onClose={() => undefined} onSubmit={onSubmit} />);
+
+    await user.type(screen.getByLabelText("Server Name"), "Edge Lab");
+    await user.type(screen.getByLabelText("Host / IP"), "203.0.113.10");
+    await user.type(screen.getByLabelText("Username"), "deploy");
+    await user.type(screen.getByLabelText("Password"), "example-pass");
+    await user.click(screen.getByRole("button", { name: "Save & Connect" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.any(Object), { connect: true });
   });
 
   it("switches to the private key form", async () => {

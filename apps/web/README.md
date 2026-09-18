@@ -22,4 +22,8 @@ npm run build
 
 The browser talks only to the Go API (`/api/*` and `/ws/*`). It never opens SSH.
 
+API location is resolved by `src/lib/runtime` (optional `NEXT_PUBLIC_API_BASE`,
+local-dev heuristics, or same-origin rewrites via `SERVER_INTERNAL_URL`). See
+[docs/architecture.md](../../docs/architecture.md).
+
 Contact: [contact@skyrekon.com](mailto:contact@skyrekon.com)

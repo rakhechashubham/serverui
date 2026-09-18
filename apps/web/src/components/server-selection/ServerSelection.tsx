@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { AddServerModal } from "@/src/components/server-selection/AddServerModal";
 import { ServerCard } from "@/src/components/server-selection/ServerCard";
 import type { NewServerInput, Server } from "@/src/lib/servers";
+import { formatConnectionTestMessage, friendlyError } from "@/src/lib/errors";
 import { formatApiError, useSession } from "@/src/lib/session";
 
 export function ServerSelection() {
@@ -39,14 +40,18 @@ export function ServerSelection() {
     return () => window.clearTimeout(id);
   }, [loadingServers, refreshServers]);
 
-  async function onAdd(input: NewServerInput) {
+  async function onAdd(input: NewServerInput, options?: { connect?: boolean }) {
     setFormBusy(true);
     setFormError(null);
     try {
-      await addServer(input);
+      const created = await addServer(input);
       setAdding(false);
+      if (options?.connect) {
+        selectServer(created);
+      }
     } catch (err) {
-      setFormError(formatApiError(err, "Unable to add server."));
+      const mapped = friendlyError(err, "Unable to add server.");
+      setFormError(`${mapped.title}. ${mapped.detail}`);
     } finally {
       setFormBusy(false);
     }
@@ -60,7 +65,8 @@ export function ServerSelection() {
       await updateServer(editing.id, input);
       setEditing(null);
     } catch (err) {
-      setFormError(formatApiError(err, "Unable to update server."));
+      const mapped = friendlyError(err, "Unable to update server.");
+      setFormError(`${mapped.title}. ${mapped.detail}`);
     } finally {
       setFormBusy(false);
     }
@@ -82,19 +88,21 @@ export function ServerSelection() {
 
   async function onTest(id: string) {
     setTestingId(id);
-    setTestMessage((current) => ({ ...current, [id]: "Testing SSH connection…" }));
+    setTestMessage((current) => ({ ...current, [id]: "Connecting…" }));
     try {
       const result = await testConnection(id);
       setTestMessage((current) => ({
         ...current,
-        [id]: result.ok
-          ? `SSH connection successful · Latency: ${result.latencyMs} ms`
-          : result.error || "Connection failed",
+        [id]: formatConnectionTestMessage(result.ok, result.latencyMs, result.error),
       }));
     } catch (err) {
       setTestMessage((current) => ({
         ...current,
-        [id]: formatApiError(err, "Connection failed"),
+        [id]: formatConnectionTestMessage(
+          false,
+          undefined,
+          formatApiError(err, "Connection failed"),
+        ),
       }));
     } finally {
       setTestingId(null);
@@ -121,10 +129,12 @@ export function ServerSelection() {
             ServerUI
           </p>
           <h1 className="mt-2 text-[32px] font-semibold tracking-tight text-white">
-            {empty ? "No servers yet." : "Your Servers"}
+            {empty ? "Welcome to ServerUI" : "Your Servers"}
           </h1>
           <p className="mt-2 text-[15px] leading-6 text-white/62">
-            {empty ? "Add a server to get started." : "Select a machine to continue."}
+            {empty
+              ? "Add your first Linux server over SSH. Manage files, a terminal, and live metrics from a desktop-style control panel."
+              : "Select a machine to open its desktop. Switch servers anytime from the top bar."}
           </p>
         </header>
 
@@ -141,7 +151,9 @@ export function ServerSelection() {
           {serversError && servers.length === 0 ? (
             <div className="min-h-[154px] rounded-[22px] border border-white/10 bg-white/[0.06] p-5">
               <p className="text-[15px] font-medium text-white">Unable to load servers.</p>
-              <p className="mt-1 text-[13px] text-white/55">{serversError}</p>
+              <p className="mt-1 text-[13px] text-white/55">
+                {friendlyError(serversError, "Unable to load servers.").detail}
+              </p>
               <button
                 type="button"
                 onClick={() => void refreshServers()}
@@ -164,7 +176,10 @@ export function ServerSelection() {
               <span className="flex size-10 items-center justify-center rounded-full bg-white/10">
                 <Plus className="size-5" />
               </span>
-              <span className="text-[14px] font-medium">Add Server</span>
+              <span className="text-[14px] font-medium">Add your first server</span>
+              <span className="max-w-xs text-center text-[12px] leading-5 text-white/45">
+                You’ll enter host, SSH port, username, and a password or private key.
+              </span>
             </button>
           ) : null}
 
@@ -209,6 +224,7 @@ export function ServerSelection() {
         <AddServerModal
           busy={formBusy}
           error={formError}
+          connectAfterSave={empty || servers.length === 0}
           onClose={() => setAdding(false)}
           onSubmit={onAdd}
         />
@@ -267,8 +283,8 @@ function DeleteServerModal({
           Delete “{server.name}”?
         </h2>
         <p className="mt-2 text-[13px] leading-6 text-white/62">
-          This will remove the server configuration and its stored credentials from ServerUI. The
-          remote machine is not deleted.
+          This permanently removes the server configuration and encrypted credentials from ServerUI.
+          The remote machine is not deleted or modified.
         </p>
         {error ? (
           <p className="mt-3 text-[12px] text-red-300" role="alert">

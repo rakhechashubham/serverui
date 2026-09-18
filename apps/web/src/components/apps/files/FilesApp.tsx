@@ -48,6 +48,7 @@ export function FilesApp() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<FileEntry | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   const serverId = selectedServer?.id || "";
@@ -179,10 +180,11 @@ export function FilesApp() {
   }
 
   async function onDelete() {
-    if (!selectedEntry) return;
+    if (!pendingDelete) return;
     try {
-      await deleteFile(serverId, selectedEntry.path);
+      await deleteFile(serverId, pendingDelete.path);
       setSelected(null);
+      setPendingDelete(null);
       await load(path);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "filesystem operation failed");
@@ -325,8 +327,8 @@ export function FilesApp() {
             selectedEntry &&
             setDialog({ type: "rename", value: selectedEntry.name, from: selectedEntry.path })
           }
-          onDelete={() => void onDelete()}
-        />
+          onDelete={() => selectedEntry && setPendingDelete(selectedEntry)}
+        />{" "}
         <input
           ref={uploadRef}
           type="file"
@@ -382,9 +384,37 @@ export function FilesApp() {
           </form>
         ) : null}
         {error ? (
-          <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700">
+          <p
+            className="border-b border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700"
+            role="alert"
+          >
             {error}
           </p>
+        ) : null}
+        {pendingDelete ? (
+          <div
+            className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-950"
+            role="alertdialog"
+            aria-labelledby="delete-file-title"
+          >
+            <p id="delete-file-title" className="min-w-0 flex-1">
+              Delete{" "}
+              <span className="font-medium">
+                {pendingDelete.type === "dir" ? "folder" : "file"} “{pendingDelete.name}”
+              </span>
+              ? This cannot be undone on the remote server.
+            </p>
+            <button type="button" className={toolbarClass} onClick={() => setPendingDelete(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-md bg-red-600 px-2.5 py-1 text-[12px] font-medium text-white"
+              onClick={() => void onDelete()}
+            >
+              Delete
+            </button>
+          </div>
         ) : null}
         {loading ? (
           <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-neutral-400">

@@ -16,6 +16,7 @@ type ServerContextValue = {
   server: ServerInfo | null;
   loading: boolean;
   error: string | null;
+  lastUpdatedAt: number | null;
   refresh: () => Promise<ServerInfo | null>;
 };
 
@@ -28,6 +29,7 @@ export function ServerProvider({ serverId, children }: { serverId: string; child
   const [server, setServer] = useState<ServerInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const seqRef = useRef(0);
 
@@ -43,6 +45,7 @@ export function ServerProvider({ serverId, children }: { serverId: string; child
       if (seq !== seqRef.current) return null;
       setServer(next);
       setError(next.error || null);
+      setLastUpdatedAt(Date.now());
       return next;
     } catch (err) {
       if (seq !== seqRef.current) return null;
@@ -104,7 +107,7 @@ export function ServerProvider({ serverId, children }: { serverId: string; child
   }, [refresh]);
 
   return (
-    <ServerContext.Provider value={{ server, loading, error, refresh }}>
+    <ServerContext.Provider value={{ server, loading, error, lastUpdatedAt, refresh }}>
       {children}
     </ServerContext.Provider>
   );

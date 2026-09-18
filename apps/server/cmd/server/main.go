@@ -14,13 +14,19 @@ import (
 	"serverui/server/internal/db"
 	"serverui/server/internal/filesystem"
 	"serverui/server/internal/metrics"
+	"serverui/server/internal/secrets"
 	"serverui/server/internal/servers"
 	"serverui/server/internal/terminal"
 )
 
 func main() {
 	addr := api.ListenAddr()
-	box, err := crypto.New(os.Getenv("SERVERUI_CREDENTIAL_ENCRYPTION_KEY"))
+	vault := secrets.EnvVault{}
+	rawKey, err := vault.EncryptionKey()
+	if err != nil {
+		log.Fatal("SERVERUI_CREDENTIAL_ENCRYPTION_KEY must be a 32-byte key (64 hex characters). Generate one with: openssl rand -hex 32")
+	}
+	box, err := crypto.New(rawKey)
 	if err != nil {
 		log.Fatal("SERVERUI_CREDENTIAL_ENCRYPTION_KEY must be a 32-byte key (64 hex characters). Generate one with: openssl rand -hex 32")
 	}

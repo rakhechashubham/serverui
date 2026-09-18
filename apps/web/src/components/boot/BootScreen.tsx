@@ -3,7 +3,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { Server } from "@/src/lib/servers";
 import { connectServer } from "@/src/lib/api/server";
-import { formatApiError, useSession } from "@/src/lib/session";
+import { friendlyError } from "@/src/lib/errors";
+import { useSession } from "@/src/lib/session";
 
 type BootScreenProps = {
   server: Server;
@@ -25,6 +26,7 @@ export function BootScreen({ server, onComplete }: BootScreenProps) {
   const [visible, setVisible] = useState(1);
   const [status, setStatus] = useState<"running" | "ready" | "error">("running");
   const [error, setError] = useState<string | null>(null);
+  const [errorTitle, setErrorTitle] = useState("Unable to connect");
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -65,8 +67,10 @@ export function BootScreen({ server, onComplete }: BootScreenProps) {
         );
       } catch (err) {
         if (cancelled) return;
+        const mapped = friendlyError(err, `Unable to connect to ${server.name}.`);
         setStatus("error");
-        setError(formatApiError(err, `Unable to connect to ${server.name}.`));
+        setErrorTitle(mapped.title);
+        setError(mapped.detail);
       }
     })();
 
@@ -82,17 +86,17 @@ export function BootScreen({ server, onComplete }: BootScreenProps) {
         <p className="text-[12px] font-medium uppercase tracking-[0.28em] text-white/45">
           ServerUI
         </p>
-        <h1 className="mt-5 text-[28px] font-semibold tracking-tight text-white">
-          Unable to connect to {server.name}
-        </h1>
+        <h1 className="mt-5 text-[28px] font-semibold tracking-tight text-white">{errorTitle}</h1>
         <p className="mt-2 max-w-md text-[14px] leading-6 text-white/62">
-          {error || "Authentication failed."}
+          ServerUI couldn&apos;t connect to {server.name}.{" "}
+          {error || "Try again or edit the server."}
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <button
             type="button"
             onClick={() => {
               setError(null);
+              setErrorTitle("Unable to connect");
               setStatus("running");
               setVisible(1);
               setAttempt((value) => value + 1);
@@ -100,13 +104,6 @@ export function BootScreen({ server, onComplete }: BootScreenProps) {
             className="rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-zinc-900"
           >
             Retry
-          </button>
-          <button
-            type="button"
-            onClick={backToServers}
-            className="rounded-full bg-white/10 px-4 py-2 text-[13px] font-medium text-white"
-          >
-            Edit Server
           </button>
           <button
             type="button"

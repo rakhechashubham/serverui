@@ -1,5 +1,5 @@
 import { apiRequest } from "@/src/lib/api/client";
-import { apiUrl } from "@/src/lib/api/origin";
+import { authenticatedApiUrl } from "@/src/lib/runtime";
 
 export type FileEntry = {
   name: string;
@@ -83,11 +83,11 @@ export async function uploadFile(serverId: string, directory: string, file: File
 }
 
 export function downloadUrl(serverId: string, path: string) {
-  return apiUrl(`/api/files/download?${fileQuery(serverId, { path, download: "1" })}`);
+  return authenticatedApiUrl(`/api/files/download?${fileQuery(serverId, { path, download: "1" })}`);
 }
 
 export function mediaUrl(serverId: string, path: string) {
-  return apiUrl(`/api/files/download?${fileQuery(serverId, { path })}`);
+  return authenticatedApiUrl(`/api/files/download?${fileQuery(serverId, { path })}`);
 }
 
 export function joinPath(base: string, name: string) {

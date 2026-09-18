@@ -18,9 +18,20 @@ var (
 	ErrDecryptFailed = errors.New("unable to decrypt secret")
 )
 
+// Cipher is the credential encryption boundary used by the server-management
+// layer. AES-GCM via Box is the current web/self-hosted implementation.
+// A future desktop build may wrap OS secure storage behind the same interface
+// without changing SSH dialing or HTTP handlers.
+type Cipher interface {
+	Encrypt(secret string) (string, error)
+	Decrypt(ciphertext string) (string, error)
+}
+
 type Box struct {
 	key [32]byte
 }
+
+var _ Cipher = (*Box)(nil)
 
 func New(raw string) (*Box, error) {
 	key, err := ParseKey(raw)

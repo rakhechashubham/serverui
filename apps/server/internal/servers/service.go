@@ -17,7 +17,7 @@ type Dialer func(cfg sshx.Config, auth sshx.AuthMethod) error
 
 type Service struct {
 	store Store
-	box   *crypto.Box
+	box   crypto.Cipher
 	pool  *sshx.Pool
 	dial  Dialer
 }
@@ -29,7 +29,7 @@ type TestResult struct {
 	Server  Public `json:"server"`
 }
 
-func NewService(store Store, box *crypto.Box) *Service {
+func NewService(store Store, box crypto.Cipher) *Service {
 	s := &Service{
 		store: store,
 		box:   box,

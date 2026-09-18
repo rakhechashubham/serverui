@@ -23,6 +23,8 @@ func New(pool *sshx.Pool) *Handler {
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
+		// Auth is enforced by the API middleware before Upgrade.
+		// Origin allowlisting for desktop also happens there via CORS.
 		return true
 	},
 	ReadBufferSize:  4096,
@@ -45,7 +47,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ws, err := upgrader.Upgrade(w, r, nil)
+	var responseHeader http.Header
+	if proto := selectedLocalAuthProtocol(r); proto != "" {
+		responseHeader = http.Header{}
+		responseHeader.Set("Sec-WebSocket-Protocol", proto)
+	}
+
+	ws, err := upgrader.Upgrade(w, r, responseHeader)
 	if err != nil {
 		return
 	}
@@ -167,4 +175,20 @@ func clampSize(value, min, max int) int {
 		return max
 	}
 	return value
+}
+
+const localAuthWSProtocolPrefix = "serverui-local."
+
+func selectedLocalAuthProtocol(r *http.Request) string {
+	raw := r.Header.Get("Sec-WebSocket-Protocol")
+	if raw == "" {
+		return ""
+	}
+	for _, part := range strings.Split(raw, ",") {
+		p := strings.TrimSpace(part)
+		if strings.HasPrefix(p, localAuthWSProtocolPrefix) {
+			return p
+		}
+	}
+	return ""
 }

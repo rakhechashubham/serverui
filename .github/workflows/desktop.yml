@@ -1,0 +1,156 @@
+name: Desktop CI
+
+# Unsigned desktop packaging matrix. Does not publish releases.
+# Triggered on desktop-related changes and manual runs.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/desktop/**"
+      - "apps/web/**"
+      - "apps/server/**"
+      - ".github/workflows/desktop.yml"
+      - "Makefile"
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "apps/web/**"
+      - "apps/server/**"
+      - ".github/workflows/desktop.yml"
+      - "Makefile"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            runner: macos-14
+            bundles: dmg
+            artifact_os: macos-arm64
+            goos: darwin
+            goarch: arm64
+          - name: Linux x64
+            runner: ubuntu-22.04
+            bundles: appimage,deb
+            artifact_os: linux-x64
+            goos: linux
+            goarch: amd64
+          - name: Windows x64
+            runner: windows-latest
+            bundles: nsis,msi
+            artifact_os: windows-x64
+            goos: windows
+            goarch: amd64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux WebKit dependencies
+        if: matrix.goos == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            apps/web/package-lock.json
+            apps/desktop/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/server/go.mod
+          cache-dependency-path: apps/server/go.sum
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: |
+          npm ci --prefix apps/web
+          npm ci --prefix apps/desktop
+
+      - name: Sync desktop version metadata
+        run: node apps/desktop/scripts/sync-version.mjs
+
+      - name: Build Go sidecar
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          chmod +x apps/desktop/scripts/prepare-sidecar.sh
+          # Force rebuild for the matrix target.
+          rm -f bin/serverui-server bin/serverui-server.exe
+          apps/desktop/scripts/prepare-sidecar.sh
+
+      - name: Build Tauri bundles (unsigned)
+        working-directory: apps/desktop
+        run: |
+          npm run build:unsigned -- --bundles ${{ matrix.bundles }}
+
+      - name: Collect artifacts
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
+          OUT="dist/desktop"
+          mkdir -p "$OUT"
+          BUNDLE="apps/desktop/src-tauri/target/release/bundle"
+          shopt -s nullglob
+          for f in \
+            "$BUNDLE"/dmg/*.dmg \
+            "$BUNDLE"/nsis/*.exe \
+            "$BUNDLE"/msi/*.msi \
+            "$BUNDLE"/appimage/*.AppImage \
+            "$BUNDLE"/deb/*.deb
+          do
+            base="$(basename "$f")"
+            # Prefer clear ServerUI-<version>-<os>-<ext> names when renaming is unambiguous.
+            ext="${base##*.}"
+            case "$ext" in
+              dmg) dest="ServerUI-${VERSION}-${{ matrix.artifact_os }}.dmg" ;;
+              exe) dest="ServerUI-${VERSION}-${{ matrix.artifact_os }}-setup.exe" ;;
+              msi) dest="ServerUI-${VERSION}-${{ matrix.artifact_os }}.msi" ;;
+              AppImage) dest="ServerUI-${VERSION}-${{ matrix.artifact_os }}.AppImage" ;;
+              deb) dest="ServerUI-${VERSION}-${{ matrix.artifact_os }}.deb" ;;
+              *) dest="ServerUI-${VERSION}-${{ matrix.artifact_os }}-${base}" ;;
+            esac
+            cp "$f" "$OUT/$dest"
+            echo "Collected $dest"
+          done
+          ls -la "$OUT"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ServerUI-${{ matrix.artifact_os }}
+          path: dist/desktop/*
+          if-no-files-found: error
+          retention-days: 14

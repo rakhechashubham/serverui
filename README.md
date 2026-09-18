@@ -1,10 +1,15 @@
 # ServerUI
 
-ServerUI is a modern, open-source control panel for managing your servers from a browser.
+ServerUI is a modern, open-source control panel for managing your servers from a browser
+or the native desktop app.
 
-It presents a Linux-inspired desktop in the browser. You add SSH servers, connect, and use
+It presents a Linux-inspired desktop UI. You add SSH servers, connect, and use
 Files, Terminal, and live CPU/RAM/disk metrics against the machine you selected. The
-browser never opens SSH. A Go backend stores encrypted credentials and dials each host.
+UI never opens SSH. A Go backend stores encrypted credentials and dials each host.
+
+**Prefer installers?** Download macOS / Windows / Linux packages from
+[GitHub Releases](https://github.com/rakhechashubham/serverui/releases)
+(you do not need to build from source). See [docs/releases.md](docs/releases.md).
 
 ![ServerUI desktop with the file manager open](docs/images/desktop.jpg)
 
@@ -25,16 +30,17 @@ Not implemented yet (UI may show Coming Soon):
 
 - In-browser code editor
 - Application, domain, and database management
-- Settings app
 - ServerUI CLI
 - ServerUI agent
+
+Settings (About, runtime, shortcuts; desktop updates) is available.
 
 See [Current limitations](#current-limitations).
 
 ## Architecture
 
 ```
-Browser
+Browser / UI
    │
    ▼
 Next.js Web
@@ -48,7 +54,18 @@ Go API Server
      Target server
 ```
 
-Details: [docs/architecture.md](docs/architecture.md).
+The UI resolves the Go API through a small runtime helper so the same client can
+talk to a remote backend (web) or a local backend (desktop).
+Docker is a deployment option for web/self-hosted installs; the Go server also
+runs from source against PostgreSQL.
+
+Details: [docs/architecture.md](docs/architecture.md) (includes **Runtime
+Architecture** for Web / Desktop / Source). Desktop hardening:
+[docs/desktop-security.md](docs/desktop-security.md),
+[docs/desktop-storage.md](docs/desktop-storage.md). Releases and installers:
+[docs/releases.md](docs/releases.md). Product audit / manual QA:
+[docs/product-audit.md](docs/product-audit.md),
+[docs/manual-qa.md](docs/manual-qa.md).
 
 ## How it works
 
@@ -64,12 +81,17 @@ File browsing uses SFTP on that same pooled connection.
 ```
 serverui/
 ├── apps/
-│   ├── web/                 Next.js UI
-│   └── server/              Go API, SSH, PostgreSQL
+│   ├── web/                 Next.js UI (shared by web + desktop)
+│   ├── server/              Go API, SSH, PostgreSQL
+│   └── desktop/             Tauri desktop shell
 ├── deploy/
 │   └── docker/              Compose files
 ├── docs/
 │   ├── architecture.md
+│   ├── desktop.md
+│   ├── product-audit.md
+│   ├── manual-qa.md
+│   ├── releases.md
 │   └── images/
 ├── scripts/
 │   └── pre-commit
@@ -77,6 +99,8 @@ serverui/
 │   └── pre-commit
 ├── .github/
 │   ├── workflows/ci.yml
+│   ├── workflows/desktop.yml
+│   ├── workflows/desktop-release.yml
 │   ├── ISSUE_TEMPLATE/
 │   └── pull_request_template.md
 ├── Makefile
@@ -99,6 +123,7 @@ Verified against this repository:
 | Node.js | 22.x                        |
 | npm     | 10.x                        |
 | Go      | 1.26                        |
+| Rust    | stable (MSRV 1.77+) for desktop |
 | Make    | GNU Make                    |
 | OpenSSL | for generating the encryption key |
 | lazydocker | required for `make dev` |
@@ -137,15 +162,18 @@ when you choose **Connect**.
 Canonical file: `.env.example` (copy to `.env`). Compose also accepts
 `deploy/docker/.env`.
 
-| Variable | Purpose |
-| -------- | ------- |
-| `POSTGRES_USER` | PostgreSQL user |
-| `POSTGRES_PASSWORD` | PostgreSQL password (local only) |
-| `POSTGRES_DB` | Database name |
-| `HTTP_PORT` | Host port for the Go API |
-| `WEB_PORT` | Host port for the web UI |
-| `DATABASE_URL` | Optional DSN; `POSTGRES_*` is enough in Compose |
-| `SERVERUI_CREDENTIAL_ENCRYPTION_KEY` | 32-byte key as 64 hex chars |
+| Category | Variable | Purpose |
+| -------- | -------- | ------- |
+| Runtime | `HTTP_PORT` | Host port for the Go API |
+| Runtime | `WEB_PORT` | Host port for the web UI |
+| Database | `POSTGRES_USER` | PostgreSQL user |
+| Database | `POSTGRES_PASSWORD` | PostgreSQL password (local only) |
+| Database | `POSTGRES_DB` | Database name |
+| Database | `POSTGRES_HOST` | Optional; defaults to `127.0.0.1` natively; Compose sets `postgres` |
+| Database | `DATABASE_URL` | Optional DSN; `POSTGRES_*` is enough in Compose |
+| Credentials | `SERVERUI_CREDENTIAL_ENCRYPTION_KEY` | 32-byte key as 64 hex chars (backend only) |
+| API (optional) | `NEXT_PUBLIC_API_BASE` | Browser-facing Go API origin when not same-origin |
+| Deployment | `SERVER_INTERNAL_URL` | Next.js server-side rewrite target (Compose sets this) |
 
 Generate a key:
 
@@ -154,7 +182,8 @@ openssl rand -hex 32
 ```
 
 Never commit `.env`, passwords, or private keys. Example hosts in docs use
-`203.0.113.10` and user `deploy`.
+`203.0.113.10` and user `deploy`. Do not put the encryption key or SSH secrets
+in frontend env vars.
 
 ## Development
 
@@ -171,6 +200,34 @@ the next time you run `make dev`.
 
 `make docker-tui` only opens LazyDocker for already-running services. It does not
 start or stop the stack.
+
+### Desktop application
+
+**Install (recommended for users):** download a release artifact from
+[GitHub Releases](https://github.com/rakhechashubham/serverui/releases), verify
+SHA-256 checksums, install, and launch. Details:
+[docs/releases.md](docs/releases.md).
+
+**Develop from source:** requires Rust/cargo in addition to the web prerequisites.
+PostgreSQL must be reachable on the host (Compose can publish it):
+
+```bash
+make setup-env
+make desktop-db
+make desktop-dev
+```
+
+Tauri loads the Next.js UI and starts `bin/serverui-server` on
+`127.0.0.1:<dynamic-port>` with a per-launch local auth token. See
+[docs/desktop.md](docs/desktop.md) and [apps/desktop/README.md](apps/desktop/README.md).
+
+```bash
+make desktop-build
+```
+
+Builds a Tauri bundle (platform installers depending on host) with a static UI
+export and sidecared Go binary. Signing and updater signatures require CI
+secrets; local builds are unsigned by default.
 
 ## Local production start
 
@@ -267,6 +324,9 @@ There is no published release process yet. Work happens on the default branch.
 
 Planned, not available:
 
+- OS keychain credential storage for desktop
+- Bundled/embedded database for offline desktop
+- Code signing, auto-update, and polished installers
 - ServerUI CLI
 - Optional host agent
 - In-browser editor
@@ -295,7 +355,8 @@ No. Makefile targets for them were removed because the code is not in this repos
 - There is no user login, SSO, or RBAC for the ServerUI app itself.
 - Editor, Applications, Domains, Databases, and Settings are not implemented.
 - CLI and agent are not implemented.
-- No official release tags or installers yet.
+- Desktop app exists as a Tauri shell; signing, auto-update, and installers are not.
+- No official release tags yet.
 
 ## Contact
 

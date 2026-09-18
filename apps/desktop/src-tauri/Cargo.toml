@@ -1,0 +1,30 @@
+[package]
+name = "serverui-desktop"
+version = "0.1.0"
+description = "ServerUI desktop shell"
+authors = ["Skyrekon Private Limited"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "serverui_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.8"
+keyring = "3"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

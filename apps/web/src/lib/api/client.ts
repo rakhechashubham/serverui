@@ -1,4 +1,5 @@
 import { apiUrl } from "@/src/lib/api/origin";
+import { getInjectedDesktopConfig, localAuthHeaderName } from "@/src/lib/runtime/config";
 
 export class ApiError extends Error {
   status: number;
@@ -17,6 +18,7 @@ async function readError(response: Response) {
   } catch {
     // Ignore non-JSON error bodies.
   }
+  if (response.status === 401) return "unauthorized";
   if (response.status === 502 || response.status === 503) {
     return "unable to connect to server";
   }
@@ -36,6 +38,11 @@ export async function apiRequest<T>(path: string, init?: RequestOptions): Promis
   }
   headers.set("Cache-Control", "no-store");
   headers.set("Pragma", "no-cache");
+
+  const token = getInjectedDesktopConfig()?.localAuthToken?.trim();
+  if (token && !headers.has(localAuthHeaderName())) {
+    headers.set(localAuthHeaderName(), token);
+  }
 
   const controller = new AbortController();
   const onParentAbort = () => controller.abort();

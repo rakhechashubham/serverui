@@ -77,7 +77,7 @@ export const APP_META: Record<
     title: "Settings",
     width: 750,
     height: 550,
-    available: false,
+    available: true,
     chrome: "light",
   },
   about: {

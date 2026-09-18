@@ -18,6 +18,8 @@ import (
 
 func testAPI(t *testing.T) http.Handler {
 	t.Helper()
+	// Web/API tests expect no desktop local-auth gate.
+	t.Setenv("SERVERUI_LOCAL_AUTH_TOKEN", "")
 	key, err := crypto.RandomKey()
 	if err != nil {
 		t.Fatal(err)

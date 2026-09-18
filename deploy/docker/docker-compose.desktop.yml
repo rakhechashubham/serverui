@@ -1,0 +1,4 @@
+services:
+  postgres:
+    ports:
+      - "${POSTGRES_PUBLISH_PORT:-5432}:5432"

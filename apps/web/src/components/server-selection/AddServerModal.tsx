@@ -10,14 +10,17 @@ export function AddServerModal({
   server,
   busy,
   error,
+  connectAfterSave = false,
   onClose,
   onSubmit,
 }: {
   server?: Server | null;
   busy?: boolean;
   error?: string | null;
+  /** When true, primary action saves then the parent may connect immediately. */
+  connectAfterSave?: boolean;
   onClose: () => void;
-  onSubmit: (input: NewServerInput) => Promise<void> | void;
+  onSubmit: (input: NewServerInput, options?: { connect?: boolean }) => Promise<void> | void;
 }) {
   const editing = Boolean(server);
   const titleId = useId();
@@ -40,7 +43,7 @@ export function AddServerModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  async function submit(event: FormEvent) {
+  async function submit(event: FormEvent, connect?: boolean) {
     event.preventDefault();
     const sshPort = Number(port);
     if (!name.trim() || !address.trim() || !username.trim()) {
@@ -64,16 +67,19 @@ export function AddServerModal({
       return;
     }
     setLocalError(null);
-    await onSubmit({
-      name: name.trim(),
-      address: address.trim(),
-      hostname: address.trim(),
-      sshPort,
-      username: username.trim(),
-      authType: auth,
-      password: password.trim() || undefined,
-      privateKey: privateKey.trim() || undefined,
-    });
+    await onSubmit(
+      {
+        name: name.trim(),
+        address: address.trim(),
+        hostname: address.trim(),
+        sshPort,
+        username: username.trim(),
+        authType: auth,
+        password: password.trim() || undefined,
+        privateKey: privateKey.trim() || undefined,
+      },
+      { connect },
+    );
   }
 
   return (
@@ -103,7 +109,13 @@ export function AddServerModal({
           </button>
         </div>
 
-        <form onSubmit={(event) => void submit(event)} className="space-y-3.5 px-5 py-4">
+        <form onSubmit={(event) => void submit(event, false)} className="space-y-3.5 px-5 py-4">
+          {!editing ? (
+            <p className="text-[13px] leading-5 text-white/62">
+              Add an SSH host. ServerUI stores encrypted credentials and connects through the Go
+              backend — the browser never opens SSH directly.
+            </p>
+          ) : null}
           <Field label="Server Name">
             <input
               ref={firstField}
@@ -145,7 +157,7 @@ export function AddServerModal({
             <legend className="mb-1.5 block text-[11px] font-medium uppercase tracking-[0.16em] text-white/48">
               Authentication
             </legend>
-            <div className="flex gap-2">
+            <div className="flex gap-2" role="group" aria-label="Authentication method">
               <AuthChoice
                 selected={auth === "password"}
                 onSelect={() => setAuth("password")}
@@ -160,7 +172,7 @@ export function AddServerModal({
           </fieldset>
 
           {auth === "password" ? (
-            <Field label={editing ? "Password" : "Password"}>
+            <Field label="Password">
               <input
                 type="password"
                 value={password}
@@ -197,7 +209,7 @@ export function AddServerModal({
             </p>
           ) : null}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-wrap justify-end gap-2 pt-2">
             <button
               type="button"
               onClick={onClose}
@@ -205,14 +217,34 @@ export function AddServerModal({
             >
               Cancel
             </button>
+            {connectAfterSave && !editing ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={(event) => void submit(event, true)}
+                className="rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-zinc-900 transition hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/25 disabled:text-white/50"
+              >
+                {busy ? "Saving…" : "Save & Connect"}
+              </button>
+            ) : null}
             <button
               type="submit"
               disabled={busy}
-              className="rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-zinc-900 transition hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/25 disabled:text-white/50"
+              className={`rounded-full px-4 py-2 text-[13px] font-semibold transition disabled:cursor-not-allowed ${
+                connectAfterSave && !editing
+                  ? "bg-white/12 text-white hover:bg-white/18 disabled:bg-white/8 disabled:text-white/40"
+                  : "bg-white text-zinc-900 hover:bg-white/90 disabled:bg-white/25 disabled:text-white/50"
+              }`}
             >
-              {busy ? "Saving…" : editing ? "Save Server" : "Add Server"}
+              {busy ? "Saving…" : editing ? "Save Server" : "Save Server"}
             </button>
           </div>
+          {!editing ? (
+            <p className="text-[11px] leading-5 text-white/45">
+              After saving, use Test Connection on the server card to verify SSH without opening the
+              desktop.
+            </p>
+          ) : null}
         </form>
       </div>
     </div>
@@ -232,6 +264,7 @@ function AuthChoice({
     <button
       type="button"
       onClick={onSelect}
+      aria-pressed={selected}
       className={`flex-1 rounded-xl border px-3 py-2 text-[13px] font-medium transition ${
         selected
           ? "border-white/30 bg-white/12 text-white"

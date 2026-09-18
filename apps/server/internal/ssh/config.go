@@ -14,6 +14,10 @@ type Config struct {
 	Password string
 }
 
+// LoadConfig reads a single-host SSH target from process environment.
+// Production ServerUI does not use this path: hosts and credentials come from
+// the servers store and are dialed through Pool/Manager. Kept for tests and
+// local experiments only. Never log SERVER_PASSWORD.
 func LoadConfig() Config {
 	return Config{
 		Host:     envOr("SERVER_HOST", "203.0.113.10"),

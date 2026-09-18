@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 import type { WindowPayload } from "@/src/components/window/window-context";
 import { wsUrl } from "@/src/lib/api/origin";
+import { getInjectedDesktopConfig, localAuthWSProtocols } from "@/src/lib/runtime/config";
 import { useSelectedServer } from "@/src/lib/session";
 
 function quotePath(value: string) {
@@ -55,17 +56,22 @@ export function TerminalApp({ payload }: { payload?: WindowPayload }) {
         fitAddon.fit();
 
         if (!serverId) {
-          setError("server id is required");
+          setError("No server selected");
           setStatus("disconnected");
           return;
         }
-        socket = new WebSocket(wsUrl(`/ws/terminal?serverId=${encodeURIComponent(serverId)}`));
+        socket = new WebSocket(
+          wsUrl(`/ws/terminal?serverId=${encodeURIComponent(serverId)}`),
+          localAuthWSProtocols(getInjectedDesktopConfig()?.localAuthToken),
+        );
         socket.binaryType = "arraybuffer";
         socketRef.current = socket;
 
         const timeout = window.setTimeout(() => {
           if (disposed || socket?.readyState === WebSocket.OPEN) return;
-          setError("unable to connect to server");
+          setError(
+            "ServerUI could not open a terminal session. Check the server connection and retry.",
+          );
           setStatus("disconnected");
           socket?.close();
         }, 12000);
@@ -95,7 +101,11 @@ export function TerminalApp({ payload }: { payload?: WindowPayload }) {
                 status?: string;
               };
               if (message.type === "error") {
-                setError(message.message || "terminal disconnected");
+                setError(
+                  message.message
+                    ? "Terminal session ended. Reconnect to continue."
+                    : "Terminal disconnected",
+                );
                 setStatus("disconnected");
                 return;
               }
@@ -110,7 +120,7 @@ export function TerminalApp({ payload }: { payload?: WindowPayload }) {
         socket.onerror = () => {
           window.clearTimeout(timeout);
           if (disposed) return;
-          setError("terminal disconnected");
+          setError("Terminal disconnected. Reconnect when the server is available.");
           setStatus("disconnected");
         };
         socket.onclose = () => {
@@ -139,7 +149,7 @@ export function TerminalApp({ payload }: { payload?: WindowPayload }) {
         observer.observe(host.current);
       } catch {
         if (!disposed) {
-          setError("unable to start terminal");
+          setError("Unable to start the terminal. Retry or reopen the window.");
           setStatus("disconnected");
         }
       }

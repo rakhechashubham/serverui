@@ -18,7 +18,12 @@ go build -o ../../bin/serverui-server ./cmd/server
 The process reads `SERVERUI_CREDENTIAL_ENCRYPTION_KEY` and PostgreSQL settings, then
 serves HTTP on `HTTP_PORT` (default `8080`).
 
-It stores server configurations, encrypts credentials, and opens SSH to each configured
-host. There is no ServerUI agent in this version.
+It stores server configurations, encrypts credentials (`crypto.Cipher` /
+AES-256-GCM), and opens SSH to each configured host. Docker is optional: the
+binary runs anywhere it can reach PostgreSQL (`POSTGRES_HOST` defaults to
+`127.0.0.1`; Compose overrides this).
+
+There is no ServerUI agent in this version. Desktop packaging will reuse this
+same HTTP API and SSH layer.
 
 Contact: [contact@skyrekon.com](mailto:contact@skyrekon.com)

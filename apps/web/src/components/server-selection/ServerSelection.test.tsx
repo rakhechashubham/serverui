@@ -43,9 +43,9 @@ describe("ServerSelection", () => {
       </SessionProvider>,
     );
 
-    expect(await screen.findByRole("heading", { name: "No servers yet." })).toBeInTheDocument();
-    expect(screen.getByText("Add a server to get started.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add Server" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Welcome to ServerUI" })).toBeInTheDocument();
+    expect(screen.getByText(/Add your first Linux server over SSH/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Add your first server/i })).toBeInTheDocument();
   });
 
   it("shows an error state when the server list cannot be loaded", async () => {
@@ -58,7 +58,7 @@ describe("ServerSelection", () => {
     );
 
     expect(await screen.findByText("Unable to load servers.")).toBeInTheDocument();
-    expect(screen.getByText("network disconnected")).toBeInTheDocument();
+    expect(screen.getByText(/local or remote API did not respond/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 

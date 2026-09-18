@@ -35,7 +35,10 @@ func Open() (*sql.DB, error) {
 func buildDSN() string {
 	user := envOr("POSTGRES_USER", "serverui")
 	pass := os.Getenv("POSTGRES_PASSWORD")
-	host := envOr("POSTGRES_HOST", "postgres")
+	// Default to loopback for native/source runs. Docker Compose sets
+	// POSTGRES_HOST=postgres explicitly; deployment must not rely on the
+	// Compose service name as an implicit default.
+	host := envOr("POSTGRES_HOST", "127.0.0.1")
 	port := envOr("POSTGRES_PORT", "5432")
 	name := envOr("POSTGRES_DB", "serverui")
 	u := &url.URL{

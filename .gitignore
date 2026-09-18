@@ -50,6 +50,7 @@ Screenshot*.png
 !.env*.example
 *.pem
 *.key
+*.key.pub
 id_rsa
 id_rsa.pub
 id_ed25519
@@ -60,6 +61,14 @@ id_ecdsa
 *.pfx
 credentials.json
 secrets.json
+# Updater / code-signing material (never commit)
+**/serverui-updater.key
+**/serverui-updater.key.pub
+AppleWWDRCAG3.cer
+*.cer
+dist/desktop/
+dist/release/
+dist/publish/
 
 # Build artifacts
 bin/
@@ -67,6 +76,10 @@ dist/
 coverage/
 build/
 tmp/
+apps/web/out/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/binaries/serverui-server-*
+apps/desktop/src-tauri/gen/
 
 # Logs
 *.log

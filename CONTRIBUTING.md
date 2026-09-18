@@ -39,10 +39,15 @@ a replacement for CI. They can be bypassed; GitHub Actions still must pass.
 ## Repository structure
 
 ```
-apps/web      Next.js UI
+apps/web      Next.js UI (shared by web + desktop)
 apps/server   Go API, SSH, PostgreSQL
-deploy/docker Docker Compose
+apps/desktop  Tauri desktop shell
+deploy/docker Docker Compose (web deployment; not required by the Go binary)
+docs/         Architecture and images
 ```
+
+Desktop uses Tauri around the existing UI and Go backend. Do not move SSH into
+the frontend or create a second backend. See [docs/desktop.md](docs/desktop.md).
 
 ## Workflow
 

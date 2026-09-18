@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 
@@ -63,17 +62,26 @@ func (s *Server) Handler() http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin != "" {
+		if originAllowed(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Cache-Control, Pragma, Range")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Cache-Control, Pragma, Range, "+LocalAuthHeader)
 			w.Header().Set("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length, Content-Type, Content-Disposition")
 		}
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		if r.Method == http.MethodOptions {
+			if origin != "" && !originAllowed(origin) {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
 			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		expected := localAuthToken()
+		if expected != "" && !tokenMatches(requestLocalToken(r), expected) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			return
 		}
 		mux.ServeHTTP(w, r)
@@ -609,12 +617,4 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Pragma", "no-cache")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
-}
-
-func ListenAddr() string {
-	port := strings.TrimSpace(os.Getenv("HTTP_PORT"))
-	if port == "" {
-		port = "8080"
-	}
-	return ":" + port
 }

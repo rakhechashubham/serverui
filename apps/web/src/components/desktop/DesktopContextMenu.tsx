@@ -14,9 +14,8 @@ export function DesktopContextMenu({
   x,
   y,
   onClose,
-  onComingSoon,
   onLogOut,
-}: DesktopContextMenuProps) {
+}: Omit<DesktopContextMenuProps, "onComingSoon"> & { onComingSoon?: () => void }) {
   const { openWindow } = useWindowManager();
 
   return (
@@ -56,15 +55,22 @@ export function DesktopContextMenu({
         }}
       />
       <MenuItem
-        label="Server Information"
+        label="Server Dashboard"
         onSelect={() => {
-          onComingSoon();
+          openWindow("dashboard");
+          onClose();
+        }}
+      />
+      <MenuItem
+        label="Settings"
+        onSelect={() => {
+          openWindow("settings");
           onClose();
         }}
       />
       <div className="my-1 h-px bg-black/8" />
       <MenuItem
-        label="Log Out"
+        label="Leave server"
         onSelect={() => {
           onLogOut();
           onClose();

@@ -42,12 +42,19 @@ the Tauri window. Closing the window stops the Go child process.
 ## Build
 
 ```bash
-make desktop-build
+make desktop-build                 # host-arch local bundle
+make desktop-build-macos-arm64     # Apple Silicon → dist/macos/
+make desktop-build-macos-x64       # Intel → dist/macos/
+make desktop-build-macos           # arm64 + x64 → dist/macos/
 ```
 
-Produces a Tauri bundle that includes a static export of `apps/web` and a
-sidecared `serverui-server` binary. Without `TAURI_SIGNING_PRIVATE_KEY`, the
-build disables updater artifact signing (`tauri.unsigned.conf.json`).
+`make desktop-build` produces a Tauri bundle for the current machine. The
+`desktop-build-macos*` targets collect versioned DMGs, `.app.tar.gz` archives,
+and `SHA256SUMS` under `dist/macos/`. Each architecture rebuilds the matching
+Go sidecar (`darwin/arm64` or `darwin/amd64`) before packaging.
+
+Without `TAURI_SIGNING_PRIVATE_KEY`, builds use `tauri.unsigned.conf.json`
+(updater artifact signing disabled).
 
 Version source of truth: `src-tauri/tauri.conf.json`. Sync with:
 

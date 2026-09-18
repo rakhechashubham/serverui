@@ -16,7 +16,8 @@ COMPOSE_DEV := docker compose -f $(DOCKER_DIR)/docker-compose.yml -f $(DOCKER_DI
 COMPOSE_DESKTOP_DB := docker compose -f $(DOCKER_DIR)/docker-compose.yml -f $(DOCKER_DIR)/docker-compose.desktop.yml --env-file $(ENV_FILE)
 
 .PHONY: help setup-env hooks start dev test lint format format-check build \
-	build-server desktop-db desktop-dev desktop-build desktop-e2e desktop-version \
+	build-server desktop-db desktop-dev desktop-build desktop-build-macos \
+	desktop-build-macos-arm64 desktop-build-macos-x64 desktop-e2e desktop-version \
 	docker-up docker-down docker-build docker-logs docker-ps docker-tui \
 	ensure-docker ensure-env ensure-web-deps ensure-desktop-deps ensure-lazydocker ensure-rust
 
@@ -27,7 +28,10 @@ help:
 	@echo "  make start           Build and start production environment in background"
 	@echo "  make desktop-dev     Start Tauri desktop + Next.js + local Go backend"
 	@echo "  make desktop-db      Start Postgres with host port published for desktop"
-	@echo "  make desktop-build   Build the Tauri desktop application bundle"
+	@echo "  make desktop-build   Build the Tauri desktop application bundle (host arch)"
+	@echo "  make desktop-build-macos-arm64  macOS Apple Silicon release → dist/macos/"
+	@echo "  make desktop-build-macos-x64    macOS Intel release → dist/macos/"
+	@echo "  make desktop-build-macos        macOS arm64 + x64 release → dist/macos/"
 	@echo "  make desktop-e2e     Run desktop local-auth / lifecycle integration checks"
 	@echo "  make desktop-version Sync/bump desktop SemVer (VERSION=x.y.z optional)"
 	@echo "  make test            Run tests"
@@ -220,6 +224,18 @@ desktop-build: setup-env ensure-env ensure-web-deps ensure-desktop-deps ensure-r
 		echo "Building unsigned desktop bundle (no updater signatures)"; \
 		cd $(DESKTOP_DIR) && npm run build:unsigned; \
 	fi
+
+desktop-build-macos-arm64: setup-env ensure-env ensure-web-deps ensure-desktop-deps ensure-rust
+	@chmod +x $(DESKTOP_DIR)/scripts/prepare-sidecar.sh $(DESKTOP_DIR)/scripts/build-macos-release.sh
+	$(DESKTOP_DIR)/scripts/build-macos-release.sh arm64
+
+desktop-build-macos-x64: setup-env ensure-env ensure-web-deps ensure-desktop-deps ensure-rust
+	@chmod +x $(DESKTOP_DIR)/scripts/prepare-sidecar.sh $(DESKTOP_DIR)/scripts/build-macos-release.sh
+	$(DESKTOP_DIR)/scripts/build-macos-release.sh x64
+
+desktop-build-macos: setup-env ensure-env ensure-web-deps ensure-desktop-deps ensure-rust
+	@chmod +x $(DESKTOP_DIR)/scripts/prepare-sidecar.sh $(DESKTOP_DIR)/scripts/build-macos-release.sh
+	$(DESKTOP_DIR)/scripts/build-macos-release.sh all
 
 desktop-e2e: setup-env ensure-env build-server
 	@chmod +x scripts/desktop-e2e.sh

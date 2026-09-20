@@ -32,7 +32,26 @@ export async function bootstrapRuntime(): Promise<BootstrapResult> {
   const timeoutMs = 60_000;
 
   while (Date.now() - started < timeoutMs) {
-    const config = await invoke<DesktopRuntimeConfig>("get_runtime_config");
+    let config: DesktopRuntimeConfig;
+    try {
+      config = await invoke<DesktopRuntimeConfig>("get_runtime_config");
+    } catch (err) {
+      const detail =
+        err instanceof Error && err.message.trim()
+          ? err.message.trim()
+          : typeof err === "string"
+            ? err
+            : "get_runtime_config failed";
+      const failed: DesktopRuntimeConfig = {
+        mode: "desktop",
+        apiOrigin: getInjectedDesktopConfig()?.apiOrigin || "",
+        localAuthToken: "",
+        status: "failed",
+        error: `Desktop shell IPC error: ${detail}`,
+      };
+      setInjectedDesktopConfig(failed);
+      return { kind: "desktop", config: failed };
+    }
     if (config.status === "ready") {
       const invalid = validateDesktopConfig(config);
       if (invalid) {

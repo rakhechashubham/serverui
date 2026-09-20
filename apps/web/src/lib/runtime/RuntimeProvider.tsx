@@ -28,25 +28,37 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     const abort = new AbortController();
-    void bootstrapRuntime().then((result) => {
-      if (cancelled) return;
-      if (result.kind === "web") {
-        setState({ phase: "web" });
-        return;
-      }
-      if (result.config.status === "ready") {
-        setState({ phase: "desktop-ready" });
-        void watchDesktopBackend((message) => {
-          if (cancelled) return;
-          setState({ phase: "desktop-failed", message });
-        }, abort.signal);
-        return;
-      }
-      setState({
-        phase: "desktop-failed",
-        message: statusMessage(result.config),
+    void bootstrapRuntime()
+      .then((result) => {
+        if (cancelled) return;
+        if (result.kind === "web") {
+          setState({ phase: "web" });
+          return;
+        }
+        if (result.config.status === "ready") {
+          setState({ phase: "desktop-ready" });
+          void watchDesktopBackend((message) => {
+            if (cancelled) return;
+            setState({ phase: "desktop-failed", message });
+          }, abort.signal);
+          return;
+        }
+        setState({
+          phase: "desktop-failed",
+          message: statusMessage(result.config),
+        });
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const detail =
+          err instanceof Error && err.message.trim()
+            ? err.message.trim()
+            : "Unable to reach the ServerUI desktop shell.";
+        setState({
+          phase: "desktop-failed",
+          message: detail,
+        });
       });
-    });
     return () => {
       cancelled = true;
       abort.abort();
@@ -65,7 +77,7 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
     return (
       <div className="flex h-dvh w-full flex-col items-center justify-center gap-2 bg-background px-6 text-center text-foreground">
         <p className="text-base font-medium">Unable to connect to local ServerUI backend.</p>
-        <p className="max-w-md text-sm opacity-80">{state.message}</p>
+        <p className="max-w-lg whitespace-pre-wrap text-sm opacity-80">{state.message}</p>
       </div>
     );
   }

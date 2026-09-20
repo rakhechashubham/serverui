@@ -197,7 +197,12 @@ desktop-dev: setup-env ensure-env ensure-web-deps ensure-desktop-deps ensure-rus
 	@echo "  UI:      http://localhost:$${WEB_PORT:-3000} (Next.js, loaded by Tauri)"
 	@echo "  Backend: started by Tauri on 127.0.0.1:<dynamic-port>"
 	@echo
-	@echo "Ensure Postgres is reachable (make desktop-db) before connecting servers."
+	@if ! nc -z 127.0.0.1 $${POSTGRES_PUBLISH_PORT:-5432} >/dev/null 2>&1; then \
+		echo "WARNING: PostgreSQL is not reachable on 127.0.0.1:$${POSTGRES_PUBLISH_PORT:-5432}."; \
+		echo "         The desktop app will fail to start the local backend until the DB is up."; \
+		echo "         Run: make desktop-db"; \
+		echo; \
+	fi
 	@trap 'echo; echo "Stopping Next.js..."; kill $$NEXT_PID 2>/dev/null || true' EXIT INT TERM HUP; \
 	(cd $(WEB_DIR) && npm run dev -- --port $${WEB_PORT:-3000}) & NEXT_PID=$$!; \
 	for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do \

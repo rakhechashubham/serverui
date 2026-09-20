@@ -113,32 +113,37 @@ impl BackendManager {
             }
         }
 
-        let child = cmd.spawn().map_err(|err| {
+        let mut child = cmd.spawn().map_err(|err| {
             format!(
                 "ServerUI backend failed to start (could not launch {}): {err}",
                 binary.display()
             )
         })?;
 
+        let stderr_buf = capture_stderr(&mut child);
+
         {
             let mut guard = self.inner.lock().expect("backend lock");
             guard.config.api_origin = origin.clone();
             guard.config.local_auth_token = token.clone();
-            guard.child = Some(child);
         }
 
-        match wait_until_ready(&origin, &token, Duration::from_secs(45)) {
+        // Keep the Child locally while waiting so we can detect early exit and
+        // surface stderr (e.g. PostgreSQL not running) instead of spinning for
+        // the full healthcheck timeout with status stuck on "starting".
+        match wait_until_ready(&mut child, &origin, &token, Duration::from_secs(45), &stderr_buf)
+        {
             Ok(()) => {
                 let mut guard = self.inner.lock().expect("backend lock");
+                guard.child = Some(child);
                 guard.config.status = BackendStatus::Ready;
                 guard.config.error = None;
             }
             Err(err) => {
+                let _ = child.kill();
+                let _ = child.wait();
                 let mut guard = self.inner.lock().expect("backend lock");
-                if let Some(mut child) = guard.child.take() {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                }
+                guard.child = None;
                 guard.config.status = BackendStatus::Failed;
                 guard.config.error = Some(err.clone());
                 guard.config.local_auth_token.clear();
@@ -412,17 +417,94 @@ fn apply_database_env(cmd: &mut Command, env_map: &HashMap<String, String>) {
         .env("POSTGRES_PORT", port);
 }
 
-fn wait_until_ready(origin: &str, token: &str, timeout: Duration) -> Result<(), String> {
+fn capture_stderr(child: &mut Child) -> Arc<Mutex<String>> {
+    let buf = Arc::new(Mutex::new(String::new()));
+    if let Some(mut stderr) = child.stderr.take() {
+        let buf_writer = Arc::clone(&buf);
+        thread::spawn(move || {
+            let mut text = String::new();
+            let _ = stderr.read_to_string(&mut text);
+            if let Ok(mut guard) = buf_writer.lock() {
+                *guard = text;
+            }
+        });
+    }
+    buf
+}
+
+fn stderr_snapshot(buf: &Arc<Mutex<String>>) -> String {
+    // Give the reader thread a brief moment after process exit.
+    thread::sleep(Duration::from_millis(50));
+    buf.lock()
+        .map(|g| g.clone())
+        .unwrap_or_default()
+}
+
+fn format_backend_exit_error(stderr: &str, last_health_err: &str) -> String {
+    let detail = sanitize_backend_stderr(stderr);
+    if !detail.is_empty() {
+        return detail;
+    }
+    if !last_health_err.is_empty() {
+        return format!("ServerUI backend failed to start: {last_health_err}");
+    }
+    "ServerUI backend exited before becoming ready.".into()
+}
+
+fn sanitize_backend_stderr(raw: &str) -> String {
+    let mut lines: Vec<&str> = raw
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter(|line| {
+            let lower = line.to_ascii_lowercase();
+            !lower.contains("credential_encryption_key")
+                && !lower.contains("local_auth_token")
+                && !lower.contains("password=")
+        })
+        .collect();
+    // Keep the most relevant tail (Go log.Fatal message is usually last).
+    if lines.len() > 6 {
+        lines = lines[lines.len() - 6..].to_vec();
+    }
+    lines.join("\n")
+}
+
+fn wait_until_ready(
+    child: &mut Child,
+    origin: &str,
+    token: &str,
+    timeout: Duration,
+    stderr_buf: &Arc<Mutex<String>>,
+) -> Result<(), String> {
     let started = Instant::now();
     let mut last_err = "backend did not become ready".to_string();
     while started.elapsed() < timeout {
+        match child.try_wait() {
+            Ok(Some(_status)) => {
+                let stderr = stderr_snapshot(stderr_buf);
+                return Err(format_backend_exit_error(&stderr, &last_err));
+            }
+            Ok(None) => {}
+            Err(err) => {
+                return Err(format!("ServerUI backend process error: {err}"));
+            }
+        }
+
         match healthcheck(origin, token) {
             Ok(()) => return Ok(()),
             Err(err) => last_err = err,
         }
         thread::sleep(Duration::from_millis(200));
     }
-    Err(format!("ServerUI backend failed to start: {last_err}"))
+
+    match child.try_wait() {
+        Ok(Some(_)) => {
+            let stderr = stderr_snapshot(stderr_buf);
+            Err(format_backend_exit_error(&stderr, &last_err))
+        }
+        _ => Err(format!("ServerUI backend failed to start: {last_err}")),
+    }
 }
 
 fn healthcheck(origin: &str, token: &str) -> Result<(), String> {
@@ -480,14 +562,20 @@ mod tests {
     }
 
     #[test]
-    fn rewrites_postgres_docker_host() {
-        let mut map = HashMap::new();
-        map.insert(
-            "DATABASE_URL".into(),
-            "postgresql://serverui:example_password@postgres:5432/serverui?sslmode=disable".into(),
-        );
-        let mut cmd = Command::new("true");
-        apply_database_env(&mut cmd, &map);
-        // Command debug does not expose env easily; ensure function does not panic.
+    fn sanitize_keeps_postgres_hint() {
+        let raw = "2026/09/19 database: dial tcp 127.0.0.1:5432: connect: connection refused\n\nPostgreSQL is required for ServerUI desktop and is not bundled. Start PostgreSQL on 127.0.0.1:5432 (for development: make desktop-db)\n";
+        let cleaned = sanitize_backend_stderr(raw);
+        assert!(cleaned.contains("PostgreSQL is required"));
+        assert!(cleaned.contains("make desktop-db"));
+    }
+
+    #[test]
+    fn sanitize_drops_secretish_lines() {
+        let raw = "ok line\nSERVERUI_CREDENTIAL_ENCRYPTION_KEY=abcd\nPOSTGRES_PASSWORD=secret\nfinal useful line\n";
+        let cleaned = sanitize_backend_stderr(raw);
+        assert!(cleaned.contains("ok line"));
+        assert!(cleaned.contains("final useful line"));
+        assert!(!cleaned.to_ascii_lowercase().contains("credential_encryption_key"));
+        assert!(!cleaned.to_ascii_lowercase().contains("password="));
     }
 }

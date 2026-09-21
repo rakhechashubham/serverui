@@ -1,5 +1,6 @@
 "use client";
 
+import { BrandMark } from "@/src/components/brand/BrandMark";
 import { useServer } from "@/src/lib/api/server-context";
 import { useSelectedServer } from "@/src/lib/session";
 
@@ -37,7 +38,10 @@ export function DashboardApp() {
 
   return (
     <div className="h-full overflow-auto sui-app p-6">
-      <p className="text-[11px] font-medium uppercase tracking-[0.22em] sui-muted">ServerUI</p>
+      <div className="flex items-center gap-3">
+        <BrandMark size={36} />
+        <p className="text-[11px] font-medium uppercase tracking-[0.22em] sui-muted">ServerUI</p>
+      </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <h3 className="text-2xl font-semibold tracking-tight sui-title">{name}</h3>
         <span

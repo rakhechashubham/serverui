@@ -7,6 +7,7 @@ import { useSession } from "@/src/lib/session";
 import { DesktopContextMenu } from "@/src/components/desktop/DesktopContextMenu";
 import { Dock } from "@/src/components/desktop/Dock";
 import { TopBar } from "@/src/components/desktop/TopBar";
+import { BrandMark } from "@/src/components/brand/BrandMark";
 import { WindowManager } from "@/src/components/window/WindowManager";
 import { WindowManagerProvider, useWindowManager } from "@/src/components/window/window-context";
 
@@ -124,8 +125,9 @@ function DesktopShell() {
         style={{ background: "var(--desktop-scrim)" }}
       />
       <TopBar />
-      <p className="pointer-events-none absolute left-6 top-12 z-10 text-white drop-shadow-md">
-        <span className="block text-[28px] font-semibold leading-none tracking-tight">
+      <div className="pointer-events-none absolute left-6 top-12 z-10 text-white drop-shadow-md">
+        <BrandMark size={44} />
+        <span className="mt-3 block text-[28px] font-semibold leading-none tracking-tight">
           ServerUI
         </span>
         <span className="mt-2 block text-[13px] leading-5 text-white/85">
@@ -133,7 +135,7 @@ function DesktopShell() {
           <br />
           {desktopRuntime ? "On your desktop." : "In your browser."}
         </span>
-      </p>
+      </div>
       <p className="pointer-events-none absolute bottom-28 left-6 z-10 max-w-[9rem] text-[13px] leading-5 text-white/80 drop-shadow">
         Control
         <br />

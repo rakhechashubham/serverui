@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isDesktopRuntime, currentRuntime } from "@/src/lib/runtime";
 import { useSelectedServer } from "@/src/lib/session";
+import { BrandMark } from "@/src/components/brand/BrandMark";
 
 type UpdatePhase = "idle" | "checking" | "up-to-date" | "available" | "downloading" | "error";
 
@@ -102,13 +103,16 @@ export function SettingsApp() {
 
   return (
     <div className="flex h-full flex-col gap-8 sui-app overflow-auto px-8 py-10">
-      <div>
-        <p className="text-[11px] font-medium uppercase tracking-[0.22em] sui-muted">ServerUI</p>
-        <h3 className="mt-2 text-2xl font-semibold tracking-tight sui-title">Settings</h3>
-        <p className="mt-2 max-w-md text-sm leading-6 sui-muted">
-          Application information and safe preferences. Secrets and credentials are never shown
-          here.
-        </p>
+      <div className="flex items-start gap-4">
+        <BrandMark size={48} />
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.22em] sui-muted">ServerUI</p>
+          <h3 className="mt-2 text-2xl font-semibold tracking-tight sui-title">Settings</h3>
+          <p className="mt-2 max-w-md text-sm leading-6 sui-muted">
+            Application information and safe preferences. Secrets and credentials are never shown
+            here.
+          </p>
+        </div>
       </div>
 
       <section className="max-w-lg space-y-3" aria-labelledby="settings-about">
@@ -118,7 +122,10 @@ export function SettingsApp() {
         <dl className="space-y-2 text-sm sui-muted">
           <div className="flex justify-between gap-4">
             <dt>Application</dt>
-            <dd className="sui-title">ServerUI</dd>
+            <dd className="flex items-center gap-2 sui-title">
+              <BrandMark size={18} />
+              ServerUI
+            </dd>
           </div>
           <div className="flex justify-between gap-4">
             <dt>Version</dt>

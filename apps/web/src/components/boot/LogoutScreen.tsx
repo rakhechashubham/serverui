@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Server } from "@/src/lib/servers";
+import { BrandMark } from "@/src/components/brand/BrandMark";
 
 type LogoutScreenProps = {
   server: Server;
@@ -62,9 +63,11 @@ export function LogoutScreen({ server, onComplete }: LogoutScreenProps) {
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08),transparent_48%),linear-gradient(to_bottom,rgba(0,0,0,0.35),rgba(0,0,0,0.78))]"
       />
       <div className="relative flex w-full max-w-xl flex-col items-center px-6 text-center animate-boot-in">
-        <p className="text-[12px] font-medium uppercase tracking-[0.28em] text-white/45">
-          ServerUI
-        </p>
+        <BrandMark
+          size={48}
+          withWordmark
+          wordmarkClassName="text-[12px] font-medium uppercase tracking-[0.28em] text-white/45"
+        />
         <h1 className="mt-5 text-[28px] font-semibold tracking-tight text-white">Logging off</h1>
         <p className="mt-3 text-[15px] text-white/78">{server.name}</p>
         <p className="font-mono text-[12px] text-white/45">

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeftRight, ChevronDown, LogOut, Server } from "lucide-react";
 import { ThemeToggle } from "@/src/components/desktop/ThemeToggle";
+import { BrandMark } from "@/src/components/brand/BrandMark";
 import { useServer } from "@/src/lib/api/server-context";
 import { useSelectedServer, useSession } from "@/src/lib/session";
 
@@ -78,7 +79,13 @@ export function TopBar() {
       className="relative z-50 flex h-8 items-center justify-between gap-4 px-3 text-[13px] backdrop-blur-xl"
       style={{ background: "var(--topbar-bg)", color: "var(--topbar-fg)" }}
     >
-      <span className="shrink-0 font-semibold tracking-tight">ServerUI</span>
+      <span className="shrink-0">
+        <BrandMark
+          size={16}
+          withWordmark
+          wordmarkClassName="text-[13px] font-semibold tracking-tight"
+        />
+      </span>
       <div className="flex min-w-0 items-center justify-end gap-3 overflow-visible whitespace-nowrap text-[12px]">
         <div
           className="relative flex min-w-0 items-center gap-1.5"

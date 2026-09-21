@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
+import { BrandMark } from "@/src/components/brand/BrandMark";
 import { AddServerModal } from "@/src/components/server-selection/AddServerModal";
 import { ServerCard } from "@/src/components/server-selection/ServerCard";
 import type { NewServerInput, Server } from "@/src/lib/servers";
@@ -125,10 +126,13 @@ export function ServerSelection() {
 
       <main className="relative mx-auto flex min-h-dvh w-full max-w-[920px] flex-col justify-center px-6 py-10 sm:px-10">
         <header className="max-w-xl">
-          <p className="text-[12px] font-medium uppercase tracking-[0.28em] text-white/48">
-            ServerUI
-          </p>
-          <h1 className="mt-2 text-[32px] font-semibold tracking-tight text-white">
+          <BrandMark
+            size={40}
+            withWordmark
+            className="text-white"
+            wordmarkClassName="text-[12px] font-medium uppercase tracking-[0.28em] text-white/48"
+          />
+          <h1 className="mt-3 text-[32px] font-semibold tracking-tight text-white">
             {empty ? "Welcome to ServerUI" : "Your Servers"}
           </h1>
           <p className="mt-2 text-[15px] leading-6 text-white/62">

@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { bootstrapRuntime, watchDesktopBackend } from "@/src/lib/runtime/bootstrap";
 import type { DesktopRuntimeConfig } from "@/src/lib/runtime/config";
+import { BrandMark } from "@/src/components/brand/BrandMark";
 
 type GateState =
   | { phase: "checking" }
@@ -67,7 +68,8 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
 
   if (state.phase === "checking" || state.phase === "desktop-starting") {
     return (
-      <div className="flex h-dvh w-full items-center justify-center bg-background text-foreground">
+      <div className="flex h-dvh w-full flex-col items-center justify-center gap-4 bg-background text-foreground">
+        <BrandMark size={56} />
         <p className="text-sm opacity-80">Starting ServerUI backend...</p>
       </div>
     );
@@ -75,7 +77,8 @@ export function RuntimeProvider({ children }: { children: ReactNode }) {
 
   if (state.phase === "desktop-failed") {
     return (
-      <div className="flex h-dvh w-full flex-col items-center justify-center gap-2 bg-background px-6 text-center text-foreground">
+      <div className="flex h-dvh w-full flex-col items-center justify-center gap-3 bg-background px-6 text-center text-foreground">
+        <BrandMark size={56} />
         <p className="text-base font-medium">Unable to connect to local ServerUI backend.</p>
         <p className="max-w-lg whitespace-pre-wrap text-sm opacity-80">{state.message}</p>
       </div>

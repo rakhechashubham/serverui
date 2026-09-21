@@ -37,14 +37,15 @@ func main() {
 	}
 	defer sqlDB.Close()
 
+	backend := db.ActiveBackend()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	if err := db.Migrate(ctx, sqlDB); err != nil {
+	if err := db.MigrateBackend(ctx, sqlDB, backend); err != nil {
 		cancel()
 		log.Fatalf("migrate: %v", err)
 	}
 	cancel()
 
-	svc := servers.NewService(servers.NewSQLStore(sqlDB), box)
+	svc := servers.NewService(servers.NewSQLStoreBackend(sqlDB, backend), box)
 	pool := svc.Pool()
 	defer pool.DisconnectAll()
 
@@ -62,7 +63,7 @@ func main() {
 		IdleTimeout:       30 * time.Second,
 	}
 
-	log.Printf("serverui server listening on %s", addr)
+	log.Printf("serverui server listening on %s (storage=%s)", addr, backend)
 
 	errCh := make(chan error, 1)
 	go func() {

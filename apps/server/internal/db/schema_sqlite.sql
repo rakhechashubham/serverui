@@ -1,8 +1,9 @@
--- servers and credentials (PostgreSQL)
+-- SQLite schema for ServerUI desktop (version 1)
+-- Timestamps are stored as RFC3339 TEXT; Go supplies values on write.
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version INTEGER PRIMARY KEY NOT NULL,
-    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    applied_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS servers (
@@ -14,9 +15,9 @@ CREATE TABLE IF NOT EXISTS servers (
     auth_type TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'unknown',
     last_error TEXT NOT NULL DEFAULT '',
-    last_seen TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    last_seen TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS server_credentials (
@@ -24,8 +25,8 @@ CREATE TABLE IF NOT EXISTS server_credentials (
     server_id TEXT NOT NULL UNIQUE REFERENCES servers(id) ON DELETE CASCADE,
     auth_type TEXT NOT NULL,
     encrypted_secret TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS server_credentials_server_id_idx ON server_credentials (server_id);

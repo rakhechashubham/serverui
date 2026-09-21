@@ -28,7 +28,7 @@ Go API Server  (apps/server)
 Tauri  (apps/desktop)
    ├── WebView → Next.js UI (apps/web, shared)
    └── Child process → Go API (apps/server)
-            ├── PostgreSQL
+            ├── Local SQLite (app data)
             └── SSH → Target Linux server
 ```
 
@@ -37,7 +37,7 @@ Tauri  (apps/desktop)
 | Frontend (`apps/web`) | Desktop UI, server picker, files, terminal (xterm.js), metrics display |
 | Desktop shell (`apps/desktop`) | Tauri window, Go child lifecycle, loopback port + local auth injection |
 | Go backend (`apps/server`) | HTTP API, WebSocket terminal bridge, credential crypto, SSH pool, SFTP, metrics |
-| PostgreSQL | Server records and encrypted credential ciphertext |
+| PostgreSQL (web) / SQLite (desktop) | Server records and encrypted credential ciphertext |
 | SSH / SFTP | Sessions to the selected Linux host |
 
 ## Runtime Architecture
@@ -88,9 +88,9 @@ API / Runtime abstraction
 
 Docker Compose is a **deployment mechanism** for the web/self-hosted path. The
 Go backend does not require Docker; `go run` / `make build` work against a
-reachable PostgreSQL. The desktop app also talks to PostgreSQL as currently
-designed (host-published Compose DB via `make desktop-db`, or any local
-Postgres).
+reachable PostgreSQL. Packaged and default desktop mode use **local SQLite** in
+the OS app-data directory (no Postgres required). Optional desktop Postgres
+testing remains available via `SERVERUI_STORAGE=postgres` and `make desktop-db`.
 
 ### Frontend runtime helpers
 
@@ -136,21 +136,24 @@ exposure with loopback bind + per-launch token.
 1. UI submits password or private key only on create/update (`POST`/`PUT`).
 2. Backend validates input, encrypts with AES-256-GCM (`crypto.Cipher` /
    `crypto.Box`) using `SERVERUI_CREDENTIAL_ENCRYPTION_KEY`.
-3. Ciphertext is stored in `server_credentials` (PostgreSQL).
+3. Ciphertext is stored in `server_credentials` (PostgreSQL for web, SQLite for desktop).
 4. List/get APIs return public fields only — never secrets.
 5. On connect / test / terminal / files / metrics, the backend decrypts in
    memory, builds an SSH auth method, and dials through `internal/ssh`.
 6. Decrypted material is not sent back to the UI and must not be logged.
 
-`crypto.Cipher` is the boundary for a future desktop OS credential store
-(Phase 3). Do not move private keys into browser JavaScript for convenience.
+Desktop resolves the AES master key via the OS keychain when available (injected
+into the Go process env). Do not move private keys into browser JavaScript.
 
 ## Server records
 
-PostgreSQL tables:
+Shared logical tables (Postgres or SQLite):
 
 - `servers` — id, name, host, port, username, auth type, status, timestamps
 - `server_credentials` — encrypted secret, cascaded on server delete
+- `schema_migrations` — schema version bookkeeping
+
+See [desktop-storage.md](desktop-storage.md).
 
 ## SSH connection lifecycle
 
@@ -238,7 +241,7 @@ See `.env.example` and [README](../README.md#environment-configuration).
 | Path | Command |
 | ---- | ------- |
 | Web (Docker) | `make dev` / `make start` |
-| Desktop | `make desktop-db` then `make desktop-dev` |
+| Desktop | `make desktop-dev` (SQLite); optional `SERVERUI_STORAGE=postgres make desktop-db` |
 | Desktop bundle | `make desktop-build` |
 | Source checks | `make test` / `make lint` / `make build` |
 

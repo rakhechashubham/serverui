@@ -28,12 +28,15 @@ fi
 
 TOKEN="$(openssl rand -hex 32)"
 PORT="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')"
+DB_PATH="$(mktemp -t serverui-e2e.XXXXXX.db)"
 export SERVERUI_DESKTOP=1
 export SERVERUI_LISTEN_HOST=127.0.0.1
 export HTTP_PORT="$PORT"
 export SERVERUI_LOCAL_AUTH_TOKEN="$TOKEN"
-export POSTGRES_HOST="${POSTGRES_HOST:-127.0.0.1}"
+export SERVERUI_STORAGE=sqlite
+export SERVERUI_DATABASE_PATH="$DB_PATH"
 unset DATABASE_URL || true
+unset POSTGRES_HOST || true
 
 LOG="$(mktemp)"
 "$BIN" >"$LOG" 2>&1 &
@@ -44,7 +47,7 @@ cleanup() {
     kill "$PID" 2>/dev/null || true
     wait "$PID" 2>/dev/null || true
   fi
-  rm -f "$LOG"
+  rm -f "$LOG" "$DB_PATH"
 }
 trap cleanup EXIT
 

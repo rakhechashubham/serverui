@@ -1,69 +1,118 @@
-# Desktop Storage Investigation
+# Desktop Storage
 
-Investigation only (Phase 3). PostgreSQL is **not** replaced in this phase.
+ServerUI uses **different storage engines by delivery mode**.
 
-## What PostgreSQL stores today
+| Mode | Engine | Why |
+| ---- | ------ | --- |
+| **Web / self-hosted** | PostgreSQL | Multi-process, Compose-friendly, existing deployments |
+| **Desktop (packaged + default `make desktop-dev`)** | SQLite file in the OS app-data directory | Zero-config single-user local install |
 
-From `apps/server/internal/db/schema.sql`:
+PostgreSQL support is **not** removed. Web mode is unchanged.
+
+## What is stored
+
+From the shared logical schema (`servers`, `server_credentials`):
 
 | Table | Contents |
 | ----- | -------- |
 | `servers` | id, name, host, port, username, auth_type, status, last_error, last_seen, timestamps |
-| `server_credentials` | encrypted_secret (AES-256-GCM ciphertext), auth_type, timestamps |
+| `server_credentials` | `encrypted_secret` (AES-256-GCM ciphertext), auth_type, timestamps |
+| `schema_migrations` | Applied schema version bookkeeping |
 
 There is no Session/user/RBAC table. Application “login” does not exist.
 
-## What must persist locally on desktop
+## Desktop SQLite location
 
-| Data | Sensitivity | Current store | Notes |
-| ---- | ----------- | ------------- | ----- |
-| Server inventory | Low–medium | PostgreSQL | Needed across launches |
-| SSH passwords / private keys | High | PostgreSQL ciphertext | Decrypted only in Go memory for SSH |
-| Credential encryption key | Critical | Env (web) / OS keychain preferred (desktop) | Protects all ciphertext |
-| Local API token | High | Process memory only | Per-launch; never persisted |
-| Theme preference | None | `localStorage` | UI only |
+Tauri resolves the platform application data directory (bundle id `com.serverui.desktop`) and stores:
 
-## What can be ephemeral
+```text
+<app-data-dir>/serverui.db
+```
 
-- Local API port and token (every launch)
-- SSH connection pool / PTY sessions (process lifetime)
-- Metrics cache
+Typical paths (examples; exact root follows the OS / Tauri PathResolver):
 
-## Could SQLite simplify distribution?
+| OS | Typical directory |
+| -- | ----------------- |
+| macOS | `~/Library/Application Support/com.serverui.desktop/` |
+| Windows | `%APPDATA%\com.serverui.desktop\` |
+| Linux | `~/.local/share/com.serverui.desktop/` (or `$XDG_DATA_HOME/...`) |
 
-| Factor | Assessment |
-| ------ | ---------- |
-| Schema | Simple; mostly portable SQL (`TIMESTAMPTZ` / `NOW()` are Postgres-flavored but adaptable) |
-| Ops | SQLite would remove the desktop Postgres dependency and help offline bundles |
-| Concurrency | Desktop is single-user; SQLite is likely enough |
-| Risk | Migration, backup, and dual-driver support would touch Go store code broadly |
+The database is created automatically on first launch. Users do **not** run migrations manually.
 
-**Recommendation:** Keep PostgreSQL for Phase 3/4 stability. Plan a Phase 4+ optional SQLite driver behind the existing `servers.Store` interface if packaging friction remains high.
+Do **not** store `serverui.db` in the install bundle, CWD, or project tree for packaged apps.
 
-## OS keychain role (Phase 3)
+## Configuration
 
-Implemented boundary:
+| Variable | Role |
+| -------- | ---- |
+| `SERVERUI_STORAGE` | `postgres` (default) or `sqlite` |
+| `SERVERUI_DATABASE_PATH` | Required when `SERVERUI_STORAGE=sqlite` — absolute path to `.db` file |
+| `DATABASE_URL` / `POSTGRES_*` | Web / optional desktop Postgres override only |
 
-- **OS keychain** may hold `SERVERUI_CREDENTIAL_ENCRYPTION_KEY` for the desktop app (`com.serverui.desktop`).
-- **PostgreSQL** continues to hold encrypted SSH secrets.
-- **Frontend** never sees the encryption key or SSH private material.
+Desktop Tauri sets:
 
-This avoids rewriting the credential model while improving where the master key lives on desktop.
+```text
+SERVERUI_DESKTOP=1
+SERVERUI_STORAGE=sqlite
+SERVERUI_DATABASE_PATH=<app-data>/serverui.db
+```
 
-## Decision
+Developer override for Postgres desktop testing:
 
-**PostgreSQL remains the desktop database in Phase 3.**
+```bash
+make desktop-db
+SERVERUI_STORAGE=postgres make desktop-dev
+```
 
-Reasons:
+## Credential security (unchanged model)
 
-1. Existing schema, migrations, and tests already assume it.
-2. Docker web workflow must stay unchanged.
-3. Replacing it now would destabilize Phase 2 without improving the primary desktop threat model (local token + loopback).
-4. Master-key placement in the OS keychain addresses the highest-value desktop secret without a storage engine swap.
+```text
+SSH secret
+  → AES-256-GCM (crypto.Box)
+  → encrypted_secret column (Postgres or SQLite)
+  → decrypted only in Go memory for SSH
+```
 
-## Follow-ups (Phase 4+)
+- Frontend never receives stored passwords/private keys.
+- Desktop master key prefers OS keychain (`com.serverui.desktop`) with `.env` fallback for developers.
+- Do not treat SQLite as “encrypted DB”; protect the machine account + master key + ciphertext.
 
-- Optional SQLite `servers.Store` implementation
-- Bundled Postgres or embedded engine packaging
-- Backup/export of encrypted server inventory
-- Documented key rotation for OS keychain + ciphertext
+## Backup guidance (desktop)
+
+1. Quit ServerUI.
+2. Copy `serverui.db` from the app-data directory to a secure backup location.
+3. Optionally also back up/export OS keychain guidance for the encryption key account (`credential-encryption-key` under service `com.serverui.desktop`) — without the key, ciphertext cannot be decrypted.
+4. Never share a raw DB dump as if it were safe: it still contains encrypted secrets that are valuable to an attacker who also obtains the key.
+
+There is no UI “export plaintext credentials” feature by design.
+
+## Migration from ServerUI 0.1.0 desktop (Postgres)
+
+Early desktop builds expected an **external** PostgreSQL instance. Data lived in the operator’s Postgres, not in an app-owned file.
+
+Phase A packaged desktop uses a **new local SQLite file** and does **not** auto-import from Postgres (to avoid silent data loss / risky transforms).
+
+If you previously used desktop with Postgres and need that inventory:
+
+- Keep using Postgres temporarily via `SERVERUI_STORAGE=postgres` in developer mode, or
+- Re-add servers in the new SQLite-backed app, or
+- Perform a careful manual export/import (not automated in this phase).
+
+ServerUI never deletes an external Postgres database during SQLite startup.
+
+## Web mode
+
+Unchanged:
+
+```text
+Next.js → Go → PostgreSQL → SSH/SFTP
+```
+
+Compose / `.env` / `DATABASE_URL` continue to work.
+
+## Driver notes
+
+- PostgreSQL: `github.com/jackc/pgx/v5`
+- SQLite: `modernc.org/sqlite` (pure Go, no CGO — simplifies sidecar cross-compiles)
+
+Schema version: `schema_migrations.version` / `db.CurrentSchemaVersion` (currently `1`).

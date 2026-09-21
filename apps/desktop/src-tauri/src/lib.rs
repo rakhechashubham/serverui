@@ -38,9 +38,16 @@ pub fn run() {
                 resource_dir
             };
 
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| {
+                    dirs_fallback_app_data()
+                });
+
             let mgr = Arc::clone(&manager_for_setup);
             std::thread::spawn(move || {
-                if let Err(_err) = mgr.start(&app_dir) {
+                if let Err(_err) = mgr.start(&app_dir, &data_dir) {
                     // Do not print tokens or encryption keys.
                     eprintln!("serverui backend failed to start");
                 }
@@ -57,4 +64,26 @@ pub fn run() {
                 _ => {}
             }
         });
+}
+
+fn dirs_fallback_app_data() -> PathBuf {
+    // Last-resort path if Tauri PathResolver fails. Prefer identifier-shaped
+    // Application Support / APPDATA / XDG locations without requiring extra crates.
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    if cfg!(target_os = "macos") {
+        home.join("Library/Application Support/com.serverui.desktop")
+    } else if cfg!(target_os = "windows") {
+        std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join("AppData/Roaming"))
+            .join("com.serverui.desktop")
+    } else {
+        std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join(".local/share"))
+            .join("com.serverui.desktop")
+    }
 }

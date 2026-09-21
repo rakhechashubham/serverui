@@ -63,12 +63,16 @@ impl BackendManager {
         self.inner.lock().expect("backend lock").config.clone()
     }
 
-    pub fn start(self: &Arc<Self>, app_dir: &Path) -> Result<(), String> {
+    pub fn start(self: &Arc<Self>, app_dir: &Path, data_dir: &Path) -> Result<(), String> {
         {
             let mut guard = self.inner.lock().expect("backend lock");
             guard.config.status = BackendStatus::Starting;
             guard.config.error = None;
         }
+
+        fs::create_dir_all(data_dir).map_err(|err| {
+            format!("Unable to initialize local ServerUI storage (create data directory): {err}")
+        })?;
 
         let token = random_token();
         let port = reserve_loopback_port()?;
@@ -97,7 +101,7 @@ impl BackendManager {
             .env("SERVERUI_LOCAL_AUTH_TOKEN", &token)
             .env("SERVERUI_CREDENTIAL_ENCRYPTION_KEY", encryption_key);
 
-        apply_database_env(&mut cmd, &env_map);
+        apply_storage_env(&mut cmd, data_dir, &env_map);
 
         #[cfg(unix)]
         {
@@ -379,7 +383,41 @@ fn load_workspace_env(app_dir: &Path) -> HashMap<String, String> {
     map
 }
 
-fn apply_database_env(cmd: &mut Command, env_map: &HashMap<String, String>) {
+fn apply_storage_env(cmd: &mut Command, data_dir: &Path, env_map: &HashMap<String, String>) {
+    // Explicit developer override: SERVERUI_STORAGE=postgres keeps optional
+    // Postgres-based desktop testing (make desktop-db). Packaged and default
+    // desktop mode always use local SQLite under the app data directory.
+    let override_storage = std::env::var("SERVERUI_STORAGE")
+        .ok()
+        .map(|v| v.trim().to_ascii_lowercase())
+        .filter(|v| !v.is_empty());
+    let use_postgres = matches!(
+        override_storage.as_deref(),
+        Some("postgres") | Some("postgresql")
+    );
+
+    if use_postgres {
+        apply_postgres_env(cmd, env_map);
+        cmd.env("SERVERUI_STORAGE", "postgres");
+        return;
+    }
+
+    let db_path = data_dir.join("serverui.db");
+    cmd.env("SERVERUI_STORAGE", "sqlite");
+    cmd.env(
+        "SERVERUI_DATABASE_PATH",
+        db_path.to_string_lossy().to_string(),
+    );
+    // Ensure Postgres env from a developer .env cannot accidentally win.
+    cmd.env_remove("DATABASE_URL");
+    cmd.env_remove("POSTGRES_HOST");
+    cmd.env_remove("POSTGRES_PORT");
+    cmd.env_remove("POSTGRES_USER");
+    cmd.env_remove("POSTGRES_PASSWORD");
+    cmd.env_remove("POSTGRES_DB");
+}
+
+fn apply_postgres_env(cmd: &mut Command, env_map: &HashMap<String, String>) {
     // Prefer explicit DATABASE_URL when it targets loopback; otherwise POSTGRES_*.
     if let Some(url) = env_map.get("DATABASE_URL").filter(|v| !v.trim().is_empty()) {
         // Docker-compose DSN uses host "postgres"; rewrite for desktop loopback.

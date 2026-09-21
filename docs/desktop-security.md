@@ -12,7 +12,7 @@ Tauri WebView
   → get_runtime_config (in-memory token + origin)
   → HTTP/WebSocket to http://127.0.0.1:<dynamic-port>
   → Go backend (SERVERUI_DESKTOP=1, local auth required)
-  → PostgreSQL (encrypted SSH secrets)
+  → SQLite or PostgreSQL (encrypted SSH secrets)
   → SSH to target Linux hosts
 ```
 
@@ -65,7 +65,7 @@ Update installs never run silently; the Settings UI requires an explicit user ac
 
 ## Credentials
 
-- SSH secrets: AES-256-GCM in PostgreSQL via `crypto.Cipher`
+- SSH secrets: AES-256-GCM via `crypto.Cipher` in PostgreSQL (web) or SQLite (desktop)
 - Encryption key: env for web; desktop prefers OS keychain (`com.serverui.desktop`) with `.env` fallback for developers
 - GET APIs never return passwords or private keys
 
@@ -73,7 +73,7 @@ Update installs never run silently; the Settings UI requires an explicit user ac
 
 - Same-user malware can often read process memory or attach to the WebView.
 - Query-string tokens for media URLs may appear in reverse-proxy or browser network panels on the local machine.
-- PostgreSQL remains a separate local service; securing it is an operator responsibility.
+- Web/self-hosted PostgreSQL remains an operator responsibility; desktop SQLite lives in the user app-data directory.
 - OS keychain availability varies on Linux without a Secret Service daemon.
 
 ## Related docs

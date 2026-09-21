@@ -10,6 +10,8 @@ on:
       - "apps/desktop/**"
       - "apps/web/**"
       - "apps/server/**"
+      - "scripts/lib/desktop-release.sh"
+      - "scripts/collect-desktop-artifacts.sh"
       - ".github/workflows/desktop.yml"
       - "Makefile"
   pull_request:
@@ -17,6 +19,8 @@ on:
       - "apps/desktop/**"
       - "apps/web/**"
       - "apps/server/**"
+      - "scripts/lib/desktop-release.sh"
+      - "scripts/collect-desktop-artifacts.sh"
       - ".github/workflows/desktop.yml"
       - "Makefile"
   workflow_dispatch:
@@ -41,22 +45,36 @@ jobs:
         include:
           - name: macOS arm64
             runner: macos-14
-            bundles: dmg
-            artifact_os: macos-arm64
+            platform: macos-arm64
+            rust_target: aarch64-apple-darwin
             goos: darwin
             goarch: arm64
+            bundles: dmg
+            verify_arch: arm64
+          - name: macOS x64
+            runner: macos-14
+            platform: macos-x64
+            rust_target: x86_64-apple-darwin
+            goos: darwin
+            goarch: amd64
+            bundles: dmg
+            verify_arch: x86_64
           - name: Linux x64
             runner: ubuntu-22.04
-            bundles: appimage,deb
-            artifact_os: linux-x64
+            platform: linux-x64
+            rust_target: x86_64-unknown-linux-gnu
             goos: linux
             goarch: amd64
+            bundles: appimage,deb
+            verify_arch: x86-64
           - name: Windows x64
             runner: windows-latest
-            bundles: nsis,msi
-            artifact_os: windows-x64
+            platform: windows-x64
+            rust_target: x86_64-pc-windows-msvc
             goos: windows
             goarch: amd64
+            bundles: nsis,msi
+            verify_arch: x86-64
 
     steps:
       - uses: actions/checkout@v4
@@ -87,6 +105,8 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -105,52 +125,78 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          TAURI_ENV_TARGET_TRIPLE: ${{ matrix.rust_target }}
+          FORCE_SIDECAR_REBUILD: "1"
         run: |
           chmod +x apps/desktop/scripts/prepare-sidecar.sh
-          # Force rebuild for the matrix target.
-          rm -f bin/serverui-server bin/serverui-server.exe
           apps/desktop/scripts/prepare-sidecar.sh
+          SIDECAR="apps/desktop/src-tauri/binaries/serverui-server-${{ matrix.rust_target }}"
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then
+            SIDECAR="${SIDECAR}.exe"
+          fi
+          test -f "$SIDECAR"
+          info="$(file -b "$SIDECAR" || true)"
+          echo "Sidecar: $info"
+          if [[ -n "$info" && "$info" != *"${{ matrix.verify_arch }}"* && "$info" != *"PE32+"* ]]; then
+            echo "Sidecar architecture mismatch: expected ${{ matrix.verify_arch }}, got: $info"
+            exit 1
+          fi
 
       - name: Build Tauri bundles (unsigned)
         working-directory: apps/desktop
         run: |
-          npm run build:unsigned -- --bundles ${{ matrix.bundles }}
+          set -euo pipefail
+          HOST="$(rustc -vV | awk '/^host:/{print $2}')"
+          TARGET="${{ matrix.rust_target }}"
+          ARGS=(--bundles ${{ matrix.bundles }})
+          if [[ "$TARGET" != "$HOST" ]]; then
+            ARGS=(--target "$TARGET" "${ARGS[@]}")
+          fi
+          npm run build:unsigned -- "${ARGS[@]}"
+
+      - name: Resolve bundle directory
+        id: bundle
+        run: |
+          set -euo pipefail
+          TARGET="${{ matrix.rust_target }}"
+          HOST="$(rustc -vV | awk '/^host:/{print $2}')"
+          BASE="apps/desktop/src-tauri/target"
+          if [[ "$TARGET" == "$HOST" ]]; then
+            if [[ -d "$BASE/$TARGET/release/bundle" ]]; then
+              echo "dir=$BASE/$TARGET/release/bundle" >> "$GITHUB_OUTPUT"
+            else
+              echo "dir=$BASE/release/bundle" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "dir=$BASE/$TARGET/release/bundle" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Collect artifacts
+        id: collect
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")"
-          OUT="dist/desktop"
+          chmod +x scripts/collect-desktop-artifacts.sh
+          case "${{ matrix.platform }}" in
+            macos-*) OUT="dist/macos" ;;
+            windows-*) OUT="dist/windows" ;;
+            linux-*) OUT="dist/linux" ;;
+          esac
           mkdir -p "$OUT"
-          BUNDLE="apps/desktop/src-tauri/target/release/bundle"
-          shopt -s nullglob
-          for f in \
-            "$BUNDLE"/dmg/*.dmg \
-            "$BUNDLE"/nsis/*.exe \
-            "$BUNDLE"/msi/*.msi \
-            "$BUNDLE"/appimage/*.AppImage \
-            "$BUNDLE"/deb/*.deb
-          do
-            base="$(basename "$f")"
-            # Prefer clear ServerUI-<version>-<os>-<ext> names when renaming is unambiguous.
-            ext="${base##*.}"
-            case "$ext" in
-              dmg) dest="ServerUI-${VERSION}-${{ matrix.artifact_os }}.dmg" ;;
-              exe) dest="ServerUI-${VERSION}-${{ matrix.artifact_os }}-setup.exe" ;;
-              msi) dest="ServerUI-${VERSION}-${{ matrix.artifact_os }}.msi" ;;
-              AppImage) dest="ServerUI-${VERSION}-${{ matrix.artifact_os }}.AppImage" ;;
-              deb) dest="ServerUI-${VERSION}-${{ matrix.artifact_os }}.deb" ;;
-              *) dest="ServerUI-${VERSION}-${{ matrix.artifact_os }}-${base}" ;;
-            esac
-            cp "$f" "$OUT/$dest"
-            echo "Collected $dest"
-          done
+          scripts/collect-desktop-artifacts.sh \
+            --version "$VERSION" \
+            --platform "${{ matrix.platform }}" \
+            --bundle-dir "${{ steps.bundle.outputs.dir }}" \
+            --out-dir "$OUT" \
+            --verify \
+            --checksums
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
           ls -la "$OUT"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ServerUI-${{ matrix.artifact_os }}
-          path: dist/desktop/*
+          name: ServerUI-${{ matrix.platform }}
+          path: ${{ steps.collect.outputs.out }}/*
           if-no-files-found: error
           retention-days: 14

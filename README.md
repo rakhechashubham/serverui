@@ -47,7 +47,7 @@ Next.js Web
    │  HTTP / WebSocket
    ▼
 Go API Server
-   ├── PostgreSQL
+   ├── PostgreSQL (web)  or  SQLite (desktop)
    └── SSH
         │
         ▼
@@ -57,7 +57,8 @@ Go API Server
 The UI resolves the Go API through a small runtime helper so the same client can
 talk to a remote backend (web) or a local backend (desktop).
 Docker is a deployment option for web/self-hosted installs; the Go server also
-runs from source against PostgreSQL.
+runs from source against PostgreSQL. Packaged desktop uses local SQLite and does
+not require Docker or PostgreSQL.
 
 Details: [docs/architecture.md](docs/architecture.md) (includes **Runtime
 Architecture** for Web / Desktop / Source). Desktop hardening:
@@ -72,9 +73,10 @@ Architecture** for Web / Desktop / Source). Desktop hardening:
 The UI sends a `serverId`. The Go process loads the stored host, decrypts credentials,
 and uses a per-server SSH pool. Files, terminal, and metrics are scoped to that ID.
 
-The browser never opens an SSH connection. PostgreSQL holds server records. Secrets are
-encrypted at rest with AES-256-GCM. A WebSocket terminal is a PTY on the selected host.
-File browsing uses SFTP on that same pooled connection.
+The browser never opens an SSH connection. The Go process stores server records
+in PostgreSQL (web) or local SQLite (desktop). Secrets are encrypted at rest with
+AES-256-GCM. A WebSocket terminal is a PTY on the selected host. File browsing
+uses SFTP on that same pooled connection.
 
 ## Project structure
 
@@ -205,17 +207,21 @@ start or stop the stack.
 
 **Install (recommended for users):** download a release artifact from
 [GitHub Releases](https://github.com/rakhechashubham/serverui/releases), verify
-SHA-256 checksums, install, and launch. Details:
-[docs/releases.md](docs/releases.md).
+SHA-256 checksums, install, and launch. No PostgreSQL, Docker, Node, Go, or Rust
+is required for packaged desktop — local SQLite is created automatically. Details:
+[docs/releases.md](docs/releases.md), [docs/desktop.md](docs/desktop.md),
+[docs/desktop-storage.md](docs/desktop-storage.md).
 
 **Develop from source:** requires Rust/cargo in addition to the web prerequisites.
-PostgreSQL must be reachable on the host (Compose can publish it):
+Default desktop-dev uses local SQLite (no Postgres required):
 
 ```bash
 make setup-env
-make desktop-db
 make desktop-dev
 ```
+
+Optional Postgres desktop testing: `make desktop-db` then
+`SERVERUI_STORAGE=postgres make desktop-dev`.
 
 Tauri loads the Next.js UI and starts `bin/serverui-server` on
 `127.0.0.1:<dynamic-port>` with a per-launch local auth token. See
@@ -223,11 +229,16 @@ Tauri loads the Next.js UI and starts `bin/serverui-server` on
 
 ```bash
 make desktop-build
+make desktop-build-macos          # arm64 + x64 → dist/macos/
+make desktop-build-windows-x64    # Windows host only
+make desktop-build-linux-x64      # Linux host only
+make desktop-build-all            # CI release instructions (no fake cross-build)
 ```
 
 Builds a Tauri bundle (platform installers depending on host) with a static UI
 export and sidecared Go binary. Signing and updater signatures require CI
-secrets; local builds are unsigned by default.
+secrets; local builds are unsigned by default. Full production matrix:
+[docs/releases.md](docs/releases.md).
 
 ## Local production start
 
@@ -318,20 +329,26 @@ ServerUI is open source under the Apache License 2.0.
 Local Git hooks (`make hooks`) block commits when format, lint, or tests fail. Hooks
 are optional local safeguards; CI is the gate.
 
-There is no published release process yet. Work happens on the default branch.
+There is a tag-driven desktop release workflow (`.github/workflows/desktop-release.yml`).
+See [docs/releases.md](docs/releases.md).
 
 ## Roadmap
 
 Planned, not available:
 
-- OS keychain credential storage for desktop
-- Bundled/embedded database for offline desktop
-- Code signing, auto-update, and polished installers
+- Code signing / notarization for all desktop channels (secrets-dependent)
+- Broader installer runtime verification matrix
 - ServerUI CLI
 - Optional host agent
 - In-browser editor
 - Application, domain, and database management
-- Settings
+
+Delivered / in tree:
+
+- OS keychain credential storage for desktop
+- Local SQLite for packaged/default desktop (Postgres remains for web)
+- Desktop packaging matrix (macOS arm64+x64, Windows x64, Linux x64) + release CI
+- Settings (About, runtime, desktop updates UI)
 
 ## FAQ
 
@@ -355,8 +372,9 @@ No. Makefile targets for them were removed because the code is not in this repos
 - There is no user login, SSO, or RBAC for the ServerUI app itself.
 - Editor, Applications, Domains, Databases, and Settings are not implemented.
 - CLI and agent are not implemented.
-- Desktop app exists as a Tauri shell; signing, auto-update, and installers are not.
-- No official release tags yet.
+- Desktop app: Tauri shell with release installers; code signing / notarization
+  depend on CI secrets and are not claimed complete until configured and verified.
+- Official GitHub Release tags publish when maintainers cut `vX.Y.Z`.
 
 ## Contact
 

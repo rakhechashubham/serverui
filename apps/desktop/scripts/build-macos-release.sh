@@ -10,13 +10,15 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 DESKTOP_DIR="$ROOT/apps/desktop"
-SERVER_DIR="$ROOT/apps/server"
 BIN_DIR="$ROOT/bin"
 SIDECAR_DIR="$DESKTOP_DIR/src-tauri/binaries"
 TARGET_DIR="$DESKTOP_DIR/src-tauri/target"
 OUT_DIR="$ROOT/dist/macos"
 PRODUCT_NAME="ServerUI"
 APP_BINARY_NAME="serverui-desktop"
+
+# shellcheck source=../../../scripts/lib/desktop-release.sh
+source "$ROOT/scripts/lib/desktop-release.sh"
 
 ARCH_ARG="${1:-}"
 if [[ -z "$ARCH_ARG" ]]; then
@@ -159,10 +161,8 @@ build_one_arch() {
   rm -f "$SIDECAR_DIR/serverui-server-${triple}" "$SIDECAR_DIR/serverui-server-${triple}.exe"
 
   echo "Building Go sidecar (darwin/$goarch)..."
-  GOOS=darwin GOARCH="$goarch" go -C "$SERVER_DIR" build -trimpath -ldflags="-s -w" \
-    -o "$BIN_DIR/serverui-server" ./cmd/server
-
-  TAURI_ENV_TARGET_TRIPLE="$triple" \
+  FORCE_SIDECAR_REBUILD=1 \
+    TAURI_ENV_TARGET_TRIPLE="$triple" \
     GOOS=darwin GOARCH="$goarch" \
     "$DESKTOP_DIR/scripts/prepare-sidecar.sh"
 
@@ -177,6 +177,24 @@ build_one_arch() {
   local bundle_root
   bundle_root="$(bundle_root_for_triple "$triple")"
   rm -rf "$bundle_root/dmg" "$bundle_root/macos"
+
+  # Detach leftover ServerUI / Tauri temp DMG mounts that break bundle_dmg.sh.
+  if command -v hdiutil >/dev/null 2>&1; then
+    local vol
+    for vol in "/Volumes/${PRODUCT_NAME}" "/Volumes/${PRODUCT_NAME} 1" /Volumes/dmg.*; do
+      if [[ -d "$vol" ]]; then
+        echo "  Detaching leftover volume: $vol"
+        hdiutil detach "$vol" -force -quiet 2>/dev/null || true
+      fi
+    done
+    # Best-effort: detach any rw.*.dmg images under the target tree.
+    local stale
+    while IFS= read -r stale; do
+      [[ -n "$stale" ]] || continue
+      hdiutil detach "$stale" -force -quiet 2>/dev/null || true
+      rm -f "$stale"
+    done < <(find "$TARGET_DIR" -name 'rw.*.dmg' 2>/dev/null || true)
+  fi
 
   echo "Building Tauri bundle (--target $triple --bundles dmg)..."
   (
@@ -279,8 +297,15 @@ build_one_arch() {
   fi
 
   mkdir -p "$OUT_DIR"
-  local dest_dmg="$OUT_DIR/${PRODUCT_NAME}-${VERSION}-${arch}.dmg"
-  local dest_tar="$OUT_DIR/${PRODUCT_NAME}-${VERSION}-${arch}.app.tar.gz"
+  # User-facing names: ServerUI-<ver>-arm64.dmg / ServerUI-<ver>-x64.dmg
+  local platform_key
+  case "$arch" in
+    arm64) platform_key="macos-arm64" ;;
+    x64) platform_key="macos-x64" ;;
+  esac
+  local dest_dmg dest_tar
+  dest_dmg="$OUT_DIR/$(desktop_release_dest_name "$VERSION" "$platform_key" dmg)"
+  dest_tar="$OUT_DIR/$(desktop_release_dest_name "$VERSION" "$platform_key" app.tar.gz)"
   rm -f "$dest_dmg" "$dest_tar" "${dest_tar}.sig"
 
   cp "$dmg_src" "$dest_dmg"
@@ -333,23 +358,7 @@ done
 
 echo
 echo "Generating SHA256SUMS..."
-(
-  cd "$OUT_DIR"
-  rm -f SHA256SUMS
-  # Only checksum final distributables (not .sig companion files in the sums body preference —
-  # include regular release files; skip SHA256SUMS itself).
-  shopt -s nullglob
-  files=( *.dmg *.app.tar.gz )
-  shopt -u nullglob
-  if [[ ${#files[@]} -eq 0 ]]; then
-    echo "No distributable files in $OUT_DIR to checksum" >&2
-    exit 1
-  fi
-  # Stable sort for reproducible SHA256SUMS.
-  while IFS= read -r f; do
-    shasum -a 256 "$f"
-  done < <(printf '%s\n' "${files[@]}" | LC_ALL=C sort) > SHA256SUMS
-)
+desktop_release_write_sha256sums "$OUT_DIR"
 echo "  ✓ SHA256SUMS"
 
 echo

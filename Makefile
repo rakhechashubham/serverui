@@ -16,8 +16,10 @@ COMPOSE_DEV := docker compose -f $(DOCKER_DIR)/docker-compose.yml -f $(DOCKER_DI
 COMPOSE_DESKTOP_DB := docker compose -f $(DOCKER_DIR)/docker-compose.yml -f $(DOCKER_DIR)/docker-compose.desktop.yml --env-file $(ENV_FILE)
 
 .PHONY: help setup-env hooks start dev test lint format format-check build \
-	build-server desktop-db desktop-dev desktop-build desktop-build-macos \
-	desktop-build-macos-arm64 desktop-build-macos-x64 desktop-e2e desktop-version \
+	build-server desktop-db desktop-dev desktop-build desktop-build-all \
+	desktop-build-macos desktop-build-macos-arm64 desktop-build-macos-x64 \
+	desktop-build-windows-x64 desktop-build-linux-x64 \
+	desktop-e2e desktop-version desktop-release-helpers-test \
 	docker-up docker-down docker-build docker-logs docker-ps docker-tui \
 	ensure-docker ensure-env ensure-web-deps ensure-desktop-deps ensure-lazydocker ensure-rust
 
@@ -29,9 +31,12 @@ help:
 	@echo "  make desktop-dev     Start Tauri desktop + Next.js + local Go backend"
 	@echo "  make desktop-db      Start Postgres with host port published for desktop"
 	@echo "  make desktop-build   Build the Tauri desktop application bundle (host arch)"
-	@echo "  make desktop-build-macos-arm64  macOS Apple Silicon release → dist/macos/"
-	@echo "  make desktop-build-macos-x64    macOS Intel release → dist/macos/"
-	@echo "  make desktop-build-macos        macOS arm64 + x64 release → dist/macos/"
+	@echo "  make desktop-build-macos-arm64  macOS Apple Silicon → dist/macos/"
+	@echo "  make desktop-build-macos-x64    macOS Intel → dist/macos/"
+	@echo "  make desktop-build-macos        macOS arm64 + x64 → dist/macos/"
+	@echo "  make desktop-build-windows-x64  Windows x64 (native Windows host) → dist/windows/"
+	@echo "  make desktop-build-linux-x64    Linux x64 (native Linux host) → dist/linux/"
+	@echo "  make desktop-build-all          Explain full matrix (CI); does not cross-build"
 	@echo "  make desktop-e2e     Run desktop local-auth / lifecycle integration checks"
 	@echo "  make desktop-version Sync/bump desktop SemVer (VERSION=x.y.z optional)"
 	@echo "  make test            Run tests"
@@ -149,6 +154,7 @@ ensure-desktop-deps:
 test: ensure-web-deps
 	cd $(WEB_DIR) && npm test
 	go -C $(SERVER_DIR) test ./...
+	@$(MAKE) desktop-release-helpers-test
 	@if command -v cargo >/dev/null 2>&1; then \
 		$(MAKE) build-server; \
 		chmod +x $(DESKTOP_DIR)/scripts/prepare-sidecar.sh; \
@@ -195,14 +201,11 @@ desktop-dev: setup-env ensure-env ensure-web-deps ensure-desktop-deps ensure-rus
 	@echo "Starting ServerUI desktop development..."
 	@echo
 	@echo "  UI:      http://localhost:$${WEB_PORT:-3000} (Next.js, loaded by Tauri)"
-	@echo "  Backend: started by Tauri on 127.0.0.1:<dynamic-port>"
+	@echo "  Backend: started by Tauri on 127.0.0.1:<dynamic-port> (SQLite in app data)"
 	@echo
-	@if ! nc -z 127.0.0.1 $${POSTGRES_PUBLISH_PORT:-5432} >/dev/null 2>&1; then \
-		echo "WARNING: PostgreSQL is not reachable on 127.0.0.1:$${POSTGRES_PUBLISH_PORT:-5432}."; \
-		echo "         The desktop app will fail to start the local backend until the DB is up."; \
-		echo "         Run: make desktop-db"; \
-		echo; \
-	fi
+	@echo "Packaged/default desktop uses local SQLite (no PostgreSQL required)."
+	@echo "Optional Postgres testing: SERVERUI_STORAGE=postgres make desktop-db && make desktop-dev"
+	@echo
 	@trap 'echo; echo "Stopping Next.js..."; kill $$NEXT_PID 2>/dev/null || true' EXIT INT TERM HUP; \
 	(cd $(WEB_DIR) && npm run dev -- --port $${WEB_PORT:-3000}) & NEXT_PID=$$!; \
 	for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do \
@@ -242,9 +245,39 @@ desktop-build-macos: setup-env ensure-env ensure-web-deps ensure-desktop-deps en
 	@chmod +x $(DESKTOP_DIR)/scripts/prepare-sidecar.sh $(DESKTOP_DIR)/scripts/build-macos-release.sh
 	$(DESKTOP_DIR)/scripts/build-macos-release.sh all
 
+desktop-build-windows-x64: setup-env ensure-env ensure-web-deps ensure-desktop-deps ensure-rust
+	@chmod +x $(DESKTOP_DIR)/scripts/prepare-sidecar.sh $(DESKTOP_DIR)/scripts/build-native-release.sh
+	$(DESKTOP_DIR)/scripts/build-native-release.sh windows-x64
+
+desktop-build-linux-x64: setup-env ensure-env ensure-web-deps ensure-desktop-deps ensure-rust
+	@chmod +x $(DESKTOP_DIR)/scripts/prepare-sidecar.sh $(DESKTOP_DIR)/scripts/build-native-release.sh
+	$(DESKTOP_DIR)/scripts/build-native-release.sh linux-x64
+
+desktop-build-all:
+	@echo "ServerUI desktop production matrix is built on native GitHub-hosted runners."
+	@echo
+	@echo "  Local (this machine, current OS/arch only):"
+	@echo "    make desktop-build"
+	@echo "    make desktop-build-macos-arm64   # macOS host"
+	@echo "    make desktop-build-macos-x64     # macOS host (cross compile OK)"
+	@echo "    make desktop-build-windows-x64   # Windows host only"
+	@echo "    make desktop-build-linux-x64     # Linux host only"
+	@echo
+	@echo "  Full release (macOS arm64+x64, Windows x64, Linux x64):"
+	@echo "    1. node apps/desktop/scripts/sync-version.mjs X.Y.Z && commit"
+	@echo "    2. git tag vX.Y.Z && git push origin vX.Y.Z"
+	@echo "    3. GitHub Actions: Desktop Release (.github/workflows/desktop-release.yml)"
+	@echo
+	@echo "This target does not attempt fragile local cross-builds for Windows/Linux."
+	@echo "See docs/releases.md."
+
 desktop-e2e: setup-env ensure-env build-server
 	@chmod +x scripts/desktop-e2e.sh
 	./scripts/desktop-e2e.sh
+
+desktop-release-helpers-test:
+	@chmod +x scripts/test-desktop-release-helpers.sh scripts/collect-desktop-artifacts.sh
+	./scripts/test-desktop-release-helpers.sh
 
 docker-up: ensure-docker ensure-env
 	$(COMPOSE_DEV) up -d --build --remove-orphans

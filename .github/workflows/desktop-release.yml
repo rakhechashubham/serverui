@@ -29,6 +29,8 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
       updater_key: ${{ steps.meta.outputs.updater_key }}
+      apple_signing: ${{ steps.meta.outputs.apple_signing }}
+      windows_signing: ${{ steps.meta.outputs.windows_signing }}
     steps:
       - uses: actions/checkout@v4
 
@@ -36,6 +38,8 @@ jobs:
         id: meta
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
@@ -61,6 +65,16 @@ jobs:
           else
             echo "updater_key=missing" >> "$GITHUB_OUTPUT"
           fi
+          if [[ -n "${APPLE_CERTIFICATE:-}" ]]; then
+            echo "apple_signing=configured" >> "$GITHUB_OUTPUT"
+          else
+            echo "apple_signing=not_configured" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ -n "${WINDOWS_CERTIFICATE:-}" ]]; then
+            echo "windows_signing=configured" >> "$GITHUB_OUTPUT"
+          else
+            echo "windows_signing=not_configured" >> "$GITHUB_OUTPUT"
+          fi
           echo "Releasing ServerUI $VERSION ($TAG)"
 
   build:
@@ -76,22 +90,36 @@ jobs:
         include:
           - name: macOS arm64
             runner: macos-14
-            args: --bundles dmg
-            artifact_os: macos-arm64
+            platform: macos-arm64
+            rust_target: aarch64-apple-darwin
             goos: darwin
             goarch: arm64
+            bundles: dmg
+            verify_arch: arm64
+          - name: macOS x64
+            runner: macos-14
+            platform: macos-x64
+            rust_target: x86_64-apple-darwin
+            goos: darwin
+            goarch: amd64
+            bundles: dmg
+            verify_arch: x86_64
           - name: Linux x64
             runner: ubuntu-22.04
-            args: --bundles appimage,deb
-            artifact_os: linux-x64
+            platform: linux-x64
+            rust_target: x86_64-unknown-linux-gnu
             goos: linux
             goarch: amd64
+            bundles: appimage,deb
+            verify_arch: x86-64
           - name: Windows x64
             runner: windows-latest
-            args: --bundles nsis,msi
-            artifact_os: windows-x64
+            platform: windows-x64
+            rust_target: x86_64-pc-windows-msvc
             goos: windows
             goarch: amd64
+            bundles: nsis,msi
+            verify_arch: x86-64
 
     steps:
       - uses: actions/checkout@v4
@@ -124,6 +152,8 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -135,14 +165,31 @@ jobs:
           npm ci --prefix apps/web
           npm ci --prefix apps/desktop
 
+      - name: Sync desktop version metadata
+        run: node apps/desktop/scripts/sync-version.mjs
+
       - name: Build Go sidecar
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          TAURI_ENV_TARGET_TRIPLE: ${{ matrix.rust_target }}
+          FORCE_SIDECAR_REBUILD: "1"
         run: |
           chmod +x apps/desktop/scripts/prepare-sidecar.sh
-          rm -f bin/serverui-server bin/serverui-server.exe
           apps/desktop/scripts/prepare-sidecar.sh
+          SIDECAR="apps/desktop/src-tauri/binaries/serverui-server-${{ matrix.rust_target }}"
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then
+            SIDECAR="${SIDECAR}.exe"
+          fi
+          test -f "$SIDECAR"
+          file -b "$SIDECAR" || true
+          if command -v file >/dev/null 2>&1; then
+            info="$(file -b "$SIDECAR" || true)"
+            if [[ "$info" != *"${{ matrix.verify_arch }}"* && "$info" != *"PE32+"* ]]; then
+              echo "Sidecar architecture mismatch: expected ${{ matrix.verify_arch }}, got: $info"
+              exit 1
+            fi
+          fi
 
       - name: Import Apple signing certificate (optional)
         if: matrix.goos == 'darwin'
@@ -153,7 +200,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${APPLE_CERTIFICATE:-}" ]]; then
-            echo "APPLE_CERTIFICATE not set; macOS build will be unsigned"
+            echo "APPLE_CERTIFICATE not set; macOS build will be unsigned (NOT CONFIGURED)"
             exit 0
           fi
           CERT_PATH="$RUNNER_TEMP/certificate.p12"
@@ -165,6 +212,24 @@ jobs:
           security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          echo "Apple signing certificate imported"
+
+      - name: Import Windows Authenticode certificate (optional)
+        if: matrix.goos == 'windows'
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrEmpty($env:WINDOWS_CERTIFICATE)) {
+            Write-Host "WINDOWS_CERTIFICATE not set; Windows build will be unsigned (NOT CONFIGURED)"
+            exit 0
+          }
+          $pfxPath = Join-Path $env:RUNNER_TEMP "windows-codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          Write-Host "WINDOWS_CERTIFICATE decoded to $pfxPath"
+          Write-Host "Authenticode: certificate material present; Tauri/signtool must be configured to consume it."
+          Write-Host "Status: CONFIGURED (material) — signing application not claimed tested."
 
       - name: Build Tauri app
         working-directory: apps/desktop
@@ -178,66 +243,117 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
+          HOST="$(rustc -vV | awk '/^host:/{print $2}')"
+          TARGET="${{ matrix.rust_target }}"
+          ARGS=(--bundles ${{ matrix.bundles }})
+          if [[ "$TARGET" != "$HOST" ]]; then
+            ARGS=(--target "$TARGET" "${ARGS[@]}")
+          fi
           if [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
             echo "Updater signing key present; building with createUpdaterArtifacts"
-            npm run build -- ${{ matrix.args }}
+            npm run build -- "${ARGS[@]}"
           else
             echo "No TAURI_SIGNING_PRIVATE_KEY secret; building with updater artifacts disabled"
-            npm run build:unsigned -- ${{ matrix.args }}
+            npm run build:unsigned -- "${ARGS[@]}"
+          fi
+
+      - name: Resolve bundle directory
+        id: bundle
+        run: |
+          set -euo pipefail
+          TARGET="${{ matrix.rust_target }}"
+          HOST="$(rustc -vV | awk '/^host:/{print $2}')"
+          BASE="apps/desktop/src-tauri/target"
+          if [[ "$TARGET" == "$HOST" ]]; then
+            if [[ -d "$BASE/$TARGET/release/bundle" ]]; then
+              echo "dir=$BASE/$TARGET/release/bundle" >> "$GITHUB_OUTPUT"
+            else
+              echo "dir=$BASE/release/bundle" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "dir=$BASE/$TARGET/release/bundle" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify macOS Mach-O architecture
+        if: matrix.goos == 'darwin'
+        run: |
+          set -euo pipefail
+          EXPECTED="${{ matrix.verify_arch }}"
+          BUNDLE="${{ steps.bundle.outputs.dir }}"
+          shopt -s nullglob
+          dmgs=( "$BUNDLE"/dmg/*.dmg )
+          shopt -u nullglob
+          test ${#dmgs[@]} -gt 0
+          # Prefer release binary under target tree
+          BIN=""
+          for cand in \
+            "apps/desktop/src-tauri/target/${{ matrix.rust_target }}/release/serverui-desktop" \
+            "apps/desktop/src-tauri/target/release/serverui-desktop"
+          do
+            if [[ -f "$cand" ]]; then BIN="$cand"; break; fi
+          done
+          if [[ -n "$BIN" ]]; then
+            info="$(file -b "$BIN")"
+            lipo_out="$(lipo -info "$BIN" 2>/dev/null || true)"
+            echo "Release binary: $info"
+            echo "lipo: $lipo_out"
+            if [[ "$info" != *"$EXPECTED"* && "$lipo_out" != *"$EXPECTED"* ]]; then
+              echo "Architecture mismatch for release binary"
+              exit 1
+            fi
+          fi
+          SIDECAR="apps/desktop/src-tauri/binaries/serverui-server-${{ matrix.rust_target }}"
+          info="$(file -b "$SIDECAR")"
+          lipo_out="$(lipo -info "$SIDECAR" 2>/dev/null || true)"
+          echo "Sidecar: $info"
+          if [[ "$info" != *"$EXPECTED"* && "$lipo_out" != *"$EXPECTED"* ]]; then
+            echo "Architecture mismatch for Go sidecar"
+            exit 1
           fi
 
       - name: Collect and rename artifacts
         run: |
           set -euo pipefail
-          VERSION="${{ needs.validate-tag.outputs.version }}"
-          OUT="dist/release/${{ matrix.artifact_os }}"
+          chmod +x scripts/collect-desktop-artifacts.sh
+          OUT="dist/release/${{ matrix.platform }}"
           mkdir -p "$OUT"
-          BUNDLE="apps/desktop/src-tauri/target/release/bundle"
-          shopt -s nullglob
-          for f in \
-            "$BUNDLE"/dmg/*.dmg \
-            "$BUNDLE"/macos/* \
-            "$BUNDLE"/nsis/* \
-            "$BUNDLE"/msi/* \
-            "$BUNDLE"/appimage/* \
-            "$BUNDLE"/deb/*.deb
-          do
-            [[ -f "$f" ]] || continue
-            base="$(basename "$f")"
-            if [[ "$base" == *.dmg ]]; then
-              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.dmg"
-            elif [[ "$base" == *.app.tar.gz ]]; then
-              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.app.tar.gz"
-            elif [[ "$base" == *.app.tar.gz.sig ]]; then
-              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.app.tar.gz.sig"
-            elif [[ "$base" == *-setup.exe ]]; then
-              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}-setup.exe"
-            elif [[ "$base" == *-setup.exe.sig ]]; then
-              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}-setup.exe.sig"
-            elif [[ "$base" == *.msi ]]; then
-              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.msi"
-            elif [[ "$base" == *.msi.sig ]]; then
-              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.msi.sig"
-            elif [[ "$base" == *.AppImage ]]; then
-              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.AppImage"
-            elif [[ "$base" == *.AppImage.sig ]]; then
-              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.AppImage.sig"
-            elif [[ "$base" == *.deb ]]; then
-              cp "$f" "$OUT/ServerUI-${VERSION}-${{ matrix.artifact_os }}.deb"
-            else
-              # Skip intermediate build files (e.g. raw .app directories already filtered by -f)
-              case "$base" in
-                *.sig) cp "$f" "$OUT/$base" ;;
-              esac
+          scripts/collect-desktop-artifacts.sh \
+            --version "${{ needs.validate-tag.outputs.version }}" \
+            --platform "${{ matrix.platform }}" \
+            --bundle-dir "${{ steps.bundle.outputs.dir }}" \
+            --out-dir "$OUT" \
+            --verify
+          # macOS: ensure updater-compatible .app.tar.gz exists even when unsigned
+          if [[ "${{ matrix.goos }}" == "darwin" ]]; then
+            VERSION="${{ needs.validate-tag.outputs.version }}"
+            case "${{ matrix.platform }}" in
+              macos-arm64) ARCH_SUFFIX=arm64 ;;
+              macos-x64) ARCH_SUFFIX=x64 ;;
+            esac
+            TAR="$OUT/ServerUI-${VERSION}-${ARCH_SUFFIX}.app.tar.gz"
+            if [[ ! -f "$TAR" ]]; then
+              BUNDLE="${{ steps.bundle.outputs.dir }}"
+              DMG=( "$BUNDLE"/dmg/*.dmg )
+              if [[ -f "${DMG[0]:-}" ]]; then
+                TMP="$(mktemp -d)"
+                MNT="$TMP/mnt"
+                mkdir -p "$MNT"
+                hdiutil attach "${DMG[0]}" -nobrowse -readonly -mountpoint "$MNT" >/dev/null
+                cp -R "$MNT/ServerUI.app" "$TMP/ServerUI.app"
+                hdiutil detach "$MNT" -quiet || hdiutil detach "$MNT" -force -quiet || true
+                tar -C "$TMP" -czf "$TAR" ServerUI.app
+                rm -rf "$TMP"
+                echo "Created $TAR from DMG"
+              fi
             fi
-          done
+          fi
           ls -la "$OUT"
 
       - name: Upload platform artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.artifact_os }}
-          path: dist/release/${{ matrix.artifact_os }}/*
+          name: release-${{ matrix.platform }}
+          path: dist/release/${{ matrix.platform }}/*
           if-no-files-found: error
           retention-days: 30
 
@@ -262,27 +378,31 @@ jobs:
           TAG: ${{ needs.validate-tag.outputs.tag }}
         run: |
           set -euo pipefail
+          chmod +x scripts/collect-desktop-artifacts.sh
+          # shellcheck source=scripts/lib/desktop-release.sh
+          source scripts/lib/desktop-release.sh
           mkdir -p dist/publish
           find dist/release -type f -print0 | while IFS= read -r -d '' f; do
             cp "$f" "dist/publish/$(basename "$f")"
           done
-          cd dist/publish
-          : > "ServerUI-${VERSION}-SHA256SUMS.txt"
-          for f in *; do
-            [[ -f "$f" ]] || continue
-            [[ "$f" == *-SHA256SUMS.txt ]] && continue
-            [[ "$f" == latest.json ]] && continue
-            sha256sum "$f" >> "ServerUI-${VERSION}-SHA256SUMS.txt"
-          done
+          desktop_release_write_sha256sums dist/publish
+          # Also keep a versioned copy of the sums for clarity on the release page.
+          cp dist/publish/SHA256SUMS "dist/publish/ServerUI-${VERSION}-SHA256SUMS.txt"
           echo "Checksums:"
-          cat "ServerUI-${VERSION}-SHA256SUMS.txt"
-          cd ../..
+          cat dist/publish/SHA256SUMS
           node scripts/generate-updater-latest-json.mjs \
             --version "$VERSION" \
             --tag "$TAG" \
             --repo "${{ github.repository }}" \
             --dir dist/publish
           ls -la dist/publish
+          # Guard: never ship a latest.json without matching .sig files.
+          if [[ -f dist/publish/latest.json ]]; then
+            if ! ls dist/publish/*.sig >/dev/null 2>&1; then
+              echo "latest.json present without .sig files; refusing to publish fake updater manifest" >&2
+              rm -f dist/publish/latest.json
+            fi
+          fi
 
       - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
@@ -295,22 +415,27 @@ jobs:
           body: |
             ## ServerUI ${{ needs.validate-tag.outputs.version }}
 
-            Download the installer for your platform below. Verify integrity with `ServerUI-${{ needs.validate-tag.outputs.version }}-SHA256SUMS.txt`.
+            Download the installer for your platform below. Verify integrity with `SHA256SUMS` (or `ServerUI-${{ needs.validate-tag.outputs.version }}-SHA256SUMS.txt`).
 
             ```bash
-            shasum -a 256 -c ServerUI-${{ needs.validate-tag.outputs.version }}-SHA256SUMS.txt
-            # or: sha256sum -c ServerUI-${{ needs.validate-tag.outputs.version }}-SHA256SUMS.txt
+            shasum -a 256 -c SHA256SUMS
+            # or: sha256sum -c SHA256SUMS
             ```
 
             See [docs/releases.md](https://github.com/${{ github.repository }}/blob/${{ needs.validate-tag.outputs.tag }}/docs/releases.md).
 
             ### Installers
-            - macOS Apple Silicon: `.dmg`
-            - Windows x64: NSIS `-setup.exe` and `.msi`
-            - Linux x64: `.AppImage` and `.deb`
+            - macOS Apple Silicon: `ServerUI-*-arm64.dmg`
+            - macOS Intel: `ServerUI-*-x64.dmg`
+            - Windows x64: `ServerUI-*-x64-setup.exe` (optional `.msi`)
+            - Linux x64: `ServerUI-*-x86_64.AppImage` and `ServerUI-*-amd64.deb`
 
-            Updater signing: **${{ needs.validate-tag.outputs.updater_key }}** (`TAURI_SIGNING_PRIVATE_KEY`).
-            When present, `latest.json` and `.sig` files are included for in-app updates.
+            ### Signing status (this run)
+            - Updater key (`TAURI_SIGNING_PRIVATE_KEY`): **${{ needs.validate-tag.outputs.updater_key }}**
+            - Apple Developer ID / notarization secrets: **${{ needs.validate-tag.outputs.apple_signing }}**
+            - Windows Authenticode secrets: **${{ needs.validate-tag.outputs.windows_signing }}**
+
+            `latest.json` is published only when signed updater artifacts (`.sig`) exist.
           files: dist/publish/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

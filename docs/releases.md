@@ -14,11 +14,11 @@ intentional GitHub Releases process for the ServerUI desktop application.
 | Product name | `ServerUI` |
 | Identifier | `com.serverui.desktop` (stable; do not change casually) |
 | Version | `0.1.0` in tauri.conf / Cargo / package.json |
-| Icons | Present (`png` / `icns` / `ico`); simple solid assets |
-| Bundle targets | `"all"` (unscoped) |
-| Signing | None |
-| Updater | None |
-| CI desktop matrix | None (only web/Go/docker CI) |
+| Icons | Present (`png` / `icns` / `ico`); brand mark with white OS-tile background |
+| Bundle targets | `dmg`, `nsis`, `msi`, `appimage`, `deb` (no RPM) |
+| Signing | Prepared via CI secrets; absent → unsigned (documented) |
+| Updater | Configured (`pubkey` + GitHub `latest.json`); signatures only when private key present |
+| CI desktop matrix | macOS arm64 + x64, Windows x64, Linux x64 |
 
 ## Versioning
 
@@ -57,38 +57,65 @@ Keep `identifier` stable after public installs; updaters and OS identity depend 
 
 ## Icons
 
-Tauri icon set lives in `apps/desktop/src-tauri/icons/` (`32x32`, `128x128`,
-`128x128@2x`, `icon.icns`, `icon.ico`). These are included in app bundles and
-installers.
+Canonical mark: `branding/serverui-icon-1024.png` (white square background for OS
+tiles; source artwork in `branding/serverui-logo.png`).
+Tauri packager icons live in `apps/desktop/src-tauri/icons/` (`32x32`, `128x128`,
+`128x128@2x`, `icon.icns`, `icon.ico`) and are included in app bundles and
+installers. Web UI uses `apps/web/public/brand/` plus favicons under `apps/web/public/`
+and `apps/web/app/favicon.ico`.
 
-**Limitation:** Current assets are simple solid-color icons generated for Tauri
-packaging, not a polished marketing logo. Replace the source `icon.png` and
-re-run `npm run tauri icon` before a branded public launch. Do not invent a new
-visual system in packaging config alone.
+To refresh platform icons after changing the master:
+
+```bash
+cd apps/desktop
+npm run tauri -- icon ../../branding/serverui-icon-1024.png
+```
+
+Then rebuild installers so DMG / `.app` / Windows / Linux packages pick up the new set.
 
 ## Supported package formats
 
-| Platform | Artifacts | CI runner | Notes |
-| -------- | --------- | --------- | ----- |
-| macOS Apple Silicon | `.dmg` (+ `.app` inside) | `macos-14` | arm64 **BUILD** via CI; local **RUNTIME** on arm64 Macs |
-| Windows x64 | NSIS `-setup.exe`, `.msi` | `windows-latest` | Prefer NSIS for updater; MSI also published |
-| Linux x64 | `.AppImage`, `.deb` | `ubuntu-22.04` | RPM not in scope |
+| Platform | Architecture | Rust target | Artifacts | CI runner | Notes |
+| -------- | ------------ | ----------- | --------- | --------- | ----- |
+| macOS | Apple Silicon (ARM64) | `aarch64-apple-darwin` | `.dmg` (+ `.app.tar.gz` updater) | `macos-14` | Native on arm64 runners |
+| macOS | Intel (x86_64) | `x86_64-apple-darwin` | `.dmg` (+ `.app.tar.gz` updater) | `macos-14` + `--target` | Cross-built from Apple Silicon; arch verified with `file`/`lipo`. **Not** a universal binary. Runtime on Intel hardware is separate from CI build verification. |
+| Windows | x64 | `x86_64-pc-windows-msvc` | NSIS `-setup.exe` (primary), optional `.msi` | `windows-latest` | MSI kept optional |
+| Linux | x64 | `x86_64-unknown-linux-gnu` | `.AppImage`, `.deb` | `ubuntu-22.04` | No RPM / Flatpak / Snap |
 
-Intel macOS (`x86_64-apple-darwin`) is **not** in the default matrix. Adding it
-requires a separate target/build (and ideally a matching runner or cross-compile
-setup). Do not claim universal macOS support without that build.
+**Not supported in this phase:** Windows ARM64, Linux ARM64, RPM, Flatpak, Snap, AUR.
 
 ### Artifact naming
 
 ```text
-ServerUI-<version>-macos-arm64.dmg
-ServerUI-<version>-windows-x64-setup.exe
-ServerUI-<version>-windows-x64.msi
-ServerUI-<version>-linux-x64.AppImage
-ServerUI-<version>-linux-x64.deb
-ServerUI-<version>-SHA256SUMS.txt
-latest.json   # only when updater signatures exist
+ServerUI-<version>-arm64.dmg
+ServerUI-<version>-x64.dmg
+ServerUI-<version>-arm64.app.tar.gz          # optional updater archive
+ServerUI-<version>-x64.app.tar.gz
+ServerUI-<version>-x64-setup.exe
+ServerUI-<version>-x64.msi                  # optional
+ServerUI-<version>-x86_64.AppImage
+ServerUI-<version>-amd64.deb
+SHA256SUMS
+ServerUI-<version>-SHA256SUMS.txt           # same sums, versioned filename on GitHub Releases
+latest.json                                 # only when updater signatures exist
 ```
+
+Local outputs land under `dist/macos/`, `dist/windows/`, `dist/linux/` (gitignored).
+
+### Local build commands
+
+```bash
+make desktop-build                 # current host architecture
+make desktop-build-macos-arm64
+make desktop-build-macos-x64
+make desktop-build-macos           # both macOS arches on a Mac
+make desktop-build-windows-x64     # Windows host only
+make desktop-build-linux-x64       # Linux host only
+make desktop-build-all            # prints how to cut a full CI release
+```
+
+`desktop-build-all` does **not** pretend a Mac can produce production Windows/Linux
+installers locally. Full matrix builds run in GitHub Actions.
 
 ## Go sidecar packaging
 
@@ -208,12 +235,13 @@ GitHub Releases. Optional future: package-store signing.
 4. git tag vX.Y.Z && git push origin vX.Y.Z
 5. Desktop Release workflow:
      validate tag ≡ tauri.conf.json
-     → build macOS / Windows / Linux
-     → sign when secrets present
-     → upload artifacts
+     → build macOS arm64 + macOS x64 + Windows x64 + Linux x64
+     → rebuild Go sidecar per GOOS/GOARCH + Tauri triple
+     → sign when secrets present (never fake)
+     → upload artifacts with standardized names
      → GitHub Release + notes
-     → SHA-256 SUMS
-     → latest.json when .sig files exist
+     → SHA256SUMS
+     → latest.json only when .sig files exist
 ```
 
 Do not publish releases from arbitrary pushes to `main`.
@@ -252,19 +280,21 @@ key. Without CI secrets, treat updater as **configured but not runtime-verified*
 
 ```bash
 # macOS
-shasum -a 256 -c ServerUI-0.1.0-SHA256SUMS.txt
+shasum -a 256 -c SHA256SUMS
 
 # Linux
-sha256sum -c ServerUI-0.1.0-SHA256SUMS.txt
+sha256sum -c SHA256SUMS
 ```
 
-Only files listed in the SUMS file were published for that release.
+Only files listed in the SUMS file were published for that release (installers /
+updater archives). Intermediate build trees are not included.
 
 ## Install / uninstall data behavior
 
 | Data | Typical location / fate |
 | ---- | ------------------------ |
-| PostgreSQL | External (Compose/host). Uninstalling ServerUI does **not** delete DB volumes |
+| SQLite (packaged desktop) | OS app-data dir for `com.serverui.desktop` (`serverui.db`) |
+| PostgreSQL | Web / self-hosted only (Compose/host). Not required by packaged desktop |
 | App config / WebView data | OS app-data directories for `com.serverui.desktop` |
 | Keychain master key | OS keychain entry; often remains after uninstall |
 | Logs | OS logs / temp; not guaranteed wiped |

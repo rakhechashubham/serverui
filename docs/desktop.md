@@ -10,44 +10,84 @@ Tauri
  ├── WebView → apps/web (same UI as the browser app)
  └── Child process → apps/server (Go)
           ↓
-     PostgreSQL
+     Local SQLite (app data directory)
           ↓
          SSH
           ↓
      Target Linux servers
 ```
 
-## Security (Phase 3)
+Web/self-hosted continues to use PostgreSQL. Desktop packaged mode does **not**
+require PostgreSQL, Docker, Node, Go, Rust, or a manual `.env`.
+
+## First-run (packaged)
+
+1. User installs and launches ServerUI  
+2. Tauri resolves the OS app-data directory and ensures it exists  
+3. Encryption key is resolved (OS keychain preferred)  
+4. Go sidecar starts with `SERVERUI_STORAGE=sqlite` and `SERVERUI_DATABASE_PATH`  
+5. Go creates/migrates `serverui.db` if needed  
+6. Health check with per-launch local token  
+7. UI loads — user can add an SSH server  
+
+If startup fails, the UI surfaces a sanitized error (not a hang on
+“Starting ServerUI backend…”).
+
+## Security
 
 - Loopback-only listen (`127.0.0.1`) in desktop mode
 - Per-launch local API token (header / WS subprotocol)
 - Desktop CORS allowlist (no `*` reflection)
 - Custom Tauri command: `get_runtime_config` only (plus updater/process plugins)
-- Encryption key prefers OS keychain; SSH secrets stay AES-GCM in Postgres
+- Encryption key prefers OS keychain; SSH secrets stay AES-GCM ciphertext in SQLite
 
 See [desktop-security.md](desktop-security.md) and [desktop-storage.md](desktop-storage.md).
 
 ## Backend lifecycle
 
-1. Generate random local auth token
-2. Reserve `127.0.0.1:0`
-3. Resolve encryption key (keychain → `.env` fallback)
-4. Spawn Go with `SERVERUI_DESKTOP=1`, loopback host, token, key
-5. Poll `/healthz` with token until ready (or fail clearly)
-6. Watch child; on unexpected exit mark status `stopped` (no auto-restart loop)
-7. On app exit: SIGTERM/process-tree kill and clear token from memory
+1. Ensure app-data directory exists  
+2. Generate random local auth token  
+3. Reserve `127.0.0.1:0`  
+4. Resolve encryption key (keychain → `.env` fallback for developers)  
+5. Spawn Go with desktop + SQLite env (or Postgres if explicitly overridden)  
+6. Poll `/healthz` with token until ready (fail-fast if child exits)  
+7. Watch child; on unexpected exit mark status `stopped`  
+8. On app exit: SIGTERM/process-tree kill and clear token from memory  
+
+## Local data
+
+| Item | Location |
+| ---- | -------- |
+| SQLite DB | `<app-data>/serverui.db` |
+| Master encryption key | OS keychain service `com.serverui.desktop` (preferred) |
+
+Backup: quit the app, copy `serverui.db` (and protect the keychain key). The DB
+contains **encrypted** secrets, not plaintext passwords. Details:
+[desktop-storage.md](desktop-storage.md).
 
 ## Development
 
+Default desktop-dev uses SQLite (no Postgres required):
+
 ```bash
 make setup-env
-make desktop-db
 make desktop-dev
 ```
 
+Optional Postgres compatibility testing:
+
 ```bash
-make desktop-e2e      # local auth, loopback, shutdown checks
+make desktop-db
+SERVERUI_STORAGE=postgres make desktop-dev
+```
+
+```bash
+make desktop-e2e      # local auth, loopback, SQLite, shutdown checks
 make desktop-build    # unsigned local bundle by default
+make desktop-build-macos          # arm64 + x64 → dist/macos/
+make desktop-build-windows-x64    # Windows host → dist/windows/
+make desktop-build-linux-x64      # Linux host → dist/linux/
+make desktop-build-all            # CI instructions for full matrix
 ```
 
 ## Install from releases
@@ -57,12 +97,18 @@ End users do not need to build from source. Download installers from
 
 | Platform | Artifact |
 | -------- | -------- |
-| macOS (Apple Silicon) | `ServerUI-*-macos-arm64.dmg` |
-| Windows x64 | `ServerUI-*-windows-x64-setup.exe` or `.msi` |
-| Linux x64 | `ServerUI-*-linux-x64.AppImage` or `.deb` |
+| macOS (Apple Silicon) | `ServerUI-<version>-arm64.dmg` |
+| macOS (Intel) | `ServerUI-<version>-x64.dmg` |
+| Windows x64 | `ServerUI-<version>-x64-setup.exe` (optional `.msi`) |
+| Linux x64 | `ServerUI-<version>-x86_64.AppImage` and `ServerUI-<version>-amd64.deb` |
 
-Verify SHA-256 sums shipped with the release. Packaging, signing, updater, and
-tag release process: [releases.md](releases.md).
+Not in scope: Windows ARM64, Linux ARM64, RPM, Flatpak, Snap.
+
+Verify with `SHA256SUMS`. Packaging, signing, updater, and tag release process:
+[releases.md](releases.md).
+
+**Signing/notarization:** not claimed complete unless CI secrets are configured
+and verified. Unsigned local builds remain useful for development.
 
 ## Product experience
 
@@ -89,9 +135,16 @@ you choose **Install and restart**. Metadata comes from GitHub Releases
 ## Known limitations
 
 - Full GUI click-through E2E inside Tauri is not automated; `desktop-e2e` covers the local API/security surface.
-- PostgreSQL is still required (SQLite investigation documented, not migrated).
-- macOS Intel and Linux/Windows **runtime** verification depend on available hardware/CI; see [releases.md](releases.md).
-- Icons are functional Tauri assets; a polished brand logo may still be swapped in later.
+- Windows/Linux **runtime** verification of installers depends on available hardware/CI.
+- No automatic import from early 0.1.0 desktop Postgres inventories (see desktop-storage.md).
+- Brand logo source: `branding/serverui-icon-1024.png` (regenerate Tauri icons via `npm run tauri -- icon` in `apps/desktop`).
 - Code signing / notarization require CI secrets; unsigned builds are expected until those are configured.
 - Mobile browsers are not a supported target for the desktop shell metaphor.
 - Applications / Domains / Databases / Editor remain Coming soon (no invented backends).
+
+## What data leaves the computer
+
+ServerUI desktop does **not** send your SSH credentials or server inventory to a
+ServerUI cloud. The Go process dials **your** configured Linux hosts over SSH
+from the local machine. Update checks (when enabled) contact the configured
+GitHub Releases endpoint for signed update metadata.

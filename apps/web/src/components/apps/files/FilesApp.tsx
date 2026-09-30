@@ -43,12 +43,23 @@ export function FilesApp() {
   const [history, setHistory] = useState<string[]>(["/"]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [entries, setEntries] = useState<FileEntry[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  const [lastSelectedPath, setLastSelectedPath] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<FileEntry | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<FileEntry[] | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deletingProgress, setDeletingProgress] = useState<{
+    current: number;
+    total: number;
+    name: string;
+  } | null>(null);
+  const [downloadStatus, setDownloadStatus] = useState<{
+    type: "info" | "success" | "error";
+    message: string;
+  } | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
   const serverId = selectedServer?.id || "";
@@ -109,10 +120,11 @@ export function FilesApp() {
     const nextHistory = [...history.slice(0, historyIndex + 1), normalized];
     setHistory(nextHistory);
     setHistoryIndex(nextHistory.length - 1);
-    setSelected(null);
+    clearSelection();
     setQuery("");
     setPath(normalized);
     setMenu(null);
+    setDownloadStatus(null);
     void load(normalized);
   }
 
@@ -120,8 +132,9 @@ export function FilesApp() {
     if (historyIndex <= 0) return;
     const nextIndex = historyIndex - 1;
     setHistoryIndex(nextIndex);
-    setSelected(null);
+    clearSelection();
     setPath(history[nextIndex]);
+    setDownloadStatus(null);
     void load(history[nextIndex]);
   }
 
@@ -129,8 +142,9 @@ export function FilesApp() {
     if (historyIndex >= history.length - 1) return;
     const nextIndex = historyIndex + 1;
     setHistoryIndex(nextIndex);
-    setSelected(null);
+    clearSelection();
     setPath(history[nextIndex]);
+    setDownloadStatus(null);
     void load(history[nextIndex]);
   }
 
@@ -148,18 +162,87 @@ export function FilesApp() {
     });
   }
 
+  const selectedEntries = useMemo(() => {
+    return entries.filter((entry) => selectedPaths.has(entry.path));
+  }, [entries, selectedPaths]);
+
+  const singleSelectedEntry = selectedEntries.length === 1 ? selectedEntries[0] : null;
+  const selectedTotalSize = useMemo(() => totalSize(selectedEntries), [selectedEntries]);
+
   function openSelected() {
-    const entry = selectedEntry;
-    if (!entry) return;
-    openEntry(entry);
+    if (singleSelectedEntry) {
+      openEntry(singleSelectedEntry);
+    }
   }
 
-  const selectedEntry = entries.find((entry) => entry.path === selected) || null;
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return entries;
     return entries.filter((entry) => entry.name.toLowerCase().includes(needle));
   }, [entries, query]);
+
+  function selectSingle(targetPath: string) {
+    setSelectedPaths(new Set([targetPath]));
+    setLastSelectedPath(targetPath);
+  }
+
+  function toggleSelect(targetPath: string) {
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(targetPath)) {
+        next.delete(targetPath);
+      } else {
+        next.add(targetPath);
+      }
+      return next;
+    });
+    setLastSelectedPath(targetPath);
+  }
+
+  function selectRange(targetPath: string) {
+    const targetIndex = visible.findIndex((e) => e.path === targetPath);
+    if (targetIndex === -1) return;
+
+    const lastIndex = lastSelectedPath ? visible.findIndex((e) => e.path === lastSelectedPath) : -1;
+
+    if (lastIndex === -1) {
+      setSelectedPaths(new Set([targetPath]));
+      setLastSelectedPath(targetPath);
+      return;
+    }
+
+    const start = Math.min(lastIndex, targetIndex);
+    const end = Math.max(lastIndex, targetIndex);
+    const rangePaths = visible.slice(start, end + 1).map((e) => e.path);
+
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      for (const p of rangePaths) {
+        next.add(p);
+      }
+      return next;
+    });
+    setLastSelectedPath(targetPath);
+  }
+
+  function selectAll() {
+    setSelectedPaths(new Set(visible.map((e) => e.path)));
+  }
+
+  function clearSelection() {
+    setSelectedPaths(new Set());
+    setLastSelectedPath(null);
+  }
+
+  function handleRowSelect(targetPath: string, event: MouseEvent) {
+    if (event.shiftKey) {
+      selectRange(targetPath);
+    } else if (event.ctrlKey || event.metaKey) {
+      toggleSelect(targetPath);
+    } else {
+      selectSingle(targetPath);
+    }
+  }
 
   async function submitDialog() {
     if (!dialog || !dialog.value.trim()) return;
@@ -179,19 +262,107 @@ export function FilesApp() {
     }
   }
 
-  async function onDelete() {
-    if (!pendingDelete) return;
-    try {
-      await deleteFile(serverId, pendingDelete.path);
-      setSelected(null);
-      setPendingDelete(null);
-      await load(path);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "filesystem operation failed");
+  async function onDelete(items: FileEntry[]) {
+    if (!items || items.length === 0) return;
+    setIsDeleting(true);
+    setError(null);
+    const errors: string[] = [];
+    const successfulPaths = new Set<string>();
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      setDeletingProgress({ current: i + 1, total: items.length, name: item.name });
+      try {
+        await deleteFile(serverId, item.path);
+        successfulPaths.add(item.path);
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : "operation failed";
+        errors.push(`“${item.name}”: ${msg}`);
+      }
     }
+
+    setIsDeleting(false);
+    setPendingDelete(null);
+    setDeletingProgress(null);
+
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      for (const p of successfulPaths) {
+        next.delete(p);
+      }
+      return next;
+    });
+
+    if (errors.length > 0) {
+      if (successfulPaths.size > 0) {
+        setError(
+          `Deleted ${successfulPaths.size} of ${items.length} items. Failed to delete: ${errors.join(", ")}`,
+        );
+      } else {
+        setError(`Failed to delete: ${errors.join(", ")}`);
+      }
+    }
+
+    await load(path);
   }
 
-  async function onUpload(fileList: FileList | null) {
+  async function onDownloadSelected(itemsToDownload: FileEntry[]) {
+    if (!itemsToDownload || itemsToDownload.length === 0) return;
+
+    const files = itemsToDownload.filter((e) => e.type === "file");
+    const dirs = itemsToDownload.filter((e) => e.type === "dir");
+
+    if (files.length === 0 && dirs.length > 0) {
+      setDownloadStatus({
+        type: "error",
+        message:
+          dirs.length === 1
+            ? `Folder “${dirs[0].name}” cannot be downloaded directly with the current download architecture.`
+            : `Folders cannot be downloaded directly with the current download architecture (${dirs.length} folders selected).`,
+      });
+      return;
+    }
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setDownloadStatus({
+        type: "info",
+        message:
+          files.length > 1
+            ? `Downloading ${i + 1} of ${files.length}: “${file.name}”…`
+            : `Downloading “${file.name}”…`,
+      });
+
+      const url = downloadUrl(serverId, file.path);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.name;
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      if (i < files.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      }
+    }
+
+    const skippedText =
+      dirs.length > 0
+        ? ` (${dirs.length} ${dirs.length === 1 ? "folder" : "folders"} skipped: folders cannot be downloaded directly)`
+        : "";
+
+    setDownloadStatus({
+      type: "success",
+      message: `Downloaded ${files.length} ${files.length === 1 ? "file" : "files"}${skippedText}.`,
+    });
+
+    setTimeout(() => {
+      setDownloadStatus((current) => (current?.type === "success" ? null : current));
+    }, 4000);
+  }
+
+  async function onUpload(fileList: globalThis.FileList | null) {
     const file = fileList?.[0];
     if (!file) return;
     try {
@@ -205,7 +376,12 @@ export function FilesApp() {
   function openContextMenu(event: MouseEvent, entry: FileEntry | null) {
     event.preventDefault();
     event.stopPropagation();
-    if (entry) setSelected(entry.path);
+    if (entry) {
+      if (!selectedPaths.has(entry.path)) {
+        setSelectedPaths(new Set([entry.path]));
+        setLastSelectedPath(entry.path);
+      }
+    }
     const width = 210;
     const height = 180;
     setMenu({
@@ -251,7 +427,28 @@ export function FilesApp() {
       className="flex h-full min-h-0 overflow-hidden sui-app"
       onClick={() => setMenu(null)}
       onKeyDown={(event) => {
-        if (event.key === "Enter") openSelected();
+        const target = event.target as HTMLElement;
+        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+          return;
+        }
+
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+          event.preventDefault();
+          selectAll();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          clearSelection();
+        } else if (event.key === "Delete" || event.key === "Backspace") {
+          if (selectedEntries.length > 0) {
+            event.preventDefault();
+            setPendingDelete(selectedEntries);
+          }
+        } else if (event.key === "Enter") {
+          if (singleSelectedEntry) {
+            event.preventDefault();
+            openEntry(singleSelectedEntry);
+          }
+        }
       }}
     >
       <aside className="flex w-[188px] shrink-0 flex-col overflow-y-auto bg-[#6d7278] px-3 py-4 text-[12px] text-white/90">
@@ -315,20 +512,23 @@ export function FilesApp() {
           </label>
         </div>
         <FileToolbar
-          selected={selectedEntry}
+          selectedEntries={selectedEntries}
+          totalCount={visible.length}
           onOpen={openSelected}
-          onDownload={() => {
-            if (selectedEntry?.type === "file") {
-              window.location.href = downloadUrl(serverId, selectedEntry.path);
-            }
-          }}
+          onDownload={() => void onDownloadSelected(selectedEntries)}
           onUploadClick={() => uploadRef.current?.click()}
           onRename={() =>
-            selectedEntry &&
-            setDialog({ type: "rename", value: selectedEntry.name, from: selectedEntry.path })
+            singleSelectedEntry &&
+            setDialog({
+              type: "rename",
+              value: singleSelectedEntry.name,
+              from: singleSelectedEntry.path,
+            })
           }
-          onDelete={() => selectedEntry && setPendingDelete(selectedEntry)}
-        />{" "}
+          onDelete={() => selectedEntries.length > 0 && setPendingDelete(selectedEntries)}
+          onSelectAll={selectAll}
+          onClearSelection={clearSelection}
+        />
         <input
           ref={uploadRef}
           type="file"
@@ -383,6 +583,27 @@ export function FilesApp() {
             </button>
           </form>
         ) : null}
+        {downloadStatus ? (
+          <div
+            className={`flex items-center justify-between border-b px-4 py-2 text-[12px] ${
+              downloadStatus.type === "error"
+                ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800/40 dark:bg-red-950/30 dark:text-red-300"
+                : downloadStatus.type === "success"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
+                  : "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-800/40 dark:bg-sky-950/30 dark:text-sky-300"
+            }`}
+            role="status"
+          >
+            <span className="min-w-0 flex-1">{downloadStatus.message}</span>
+            <button
+              type="button"
+              className="ml-2 text-xs font-semibold opacity-70 hover:opacity-100"
+              onClick={() => setDownloadStatus(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        ) : null}
         {error ? (
           <p
             className="border-b border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700"
@@ -391,28 +612,51 @@ export function FilesApp() {
             {error}
           </p>
         ) : null}
-        {pendingDelete ? (
+        {pendingDelete && pendingDelete.length > 0 ? (
           <div
-            className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-950"
+            className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-950 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-200"
             role="alertdialog"
             aria-labelledby="delete-file-title"
           >
             <p id="delete-file-title" className="min-w-0 flex-1">
-              Delete{" "}
-              <span className="font-medium">
-                {pendingDelete.type === "dir" ? "folder" : "file"} “{pendingDelete.name}”
-              </span>
-              ? This cannot be undone on the remote server.
+              {isDeleting ? (
+                <span>
+                  Deleting {deletingProgress?.current || 1} of {pendingDelete.length}
+                  {deletingProgress?.name ? `: “${deletingProgress.name}”` : "…"}
+                </span>
+              ) : pendingDelete.length === 1 ? (
+                <>
+                  Delete{" "}
+                  <span className="font-medium">
+                    {pendingDelete[0].type === "dir" ? "folder" : "file"} “{pendingDelete[0].name}”
+                  </span>
+                  ? This cannot be undone on the remote server.
+                </>
+              ) : (
+                <>
+                  Delete <span className="font-medium">{pendingDelete.length} items</span>? This
+                  action cannot be undone.
+                </>
+              )}
             </p>
-            <button type="button" className={toolbarClass} onClick={() => setPendingDelete(null)}>
+            <button
+              type="button"
+              className={toolbarClass}
+              disabled={isDeleting}
+              onClick={() => {
+                setPendingDelete(null);
+                setDeletingProgress(null);
+              }}
+            >
               Cancel
             </button>
             <button
               type="button"
-              className="rounded-md bg-red-600 px-2.5 py-1 text-[12px] font-medium text-white"
-              onClick={() => void onDelete()}
+              disabled={isDeleting}
+              className="rounded-md bg-red-600 px-2.5 py-1 text-[12px] font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              onClick={() => void onDelete(pendingDelete)}
             >
-              Delete
+              {isDeleting ? "Deleting…" : "Delete"}
             </button>
           </div>
         ) : null}
@@ -428,8 +672,12 @@ export function FilesApp() {
           <FileList
             path={path}
             entries={visible}
-            selected={selected}
-            onSelect={setSelected}
+            selectedPaths={selectedPaths}
+            onSelect={handleRowSelect}
+            onToggleSelect={toggleSelect}
+            onSelectRange={selectRange}
+            onSelectAll={selectAll}
+            onClearSelection={clearSelection}
             onOpen={openEntry}
             onParent={() => path !== "/" && goTo(parentPath(path))}
             onContextMenu={openContextMenu}
@@ -437,7 +685,21 @@ export function FilesApp() {
         )}
         <div className="flex shrink-0 items-center justify-between border-t sui-hairline px-4 py-1.5 text-[11px] sui-muted">
           <span>
-            {visible.length} {visible.length === 1 ? "item" : "items"}
+            {selectedEntries.length > 0 ? (
+              <>
+                <span className="font-medium text-sky-600 dark:text-sky-400">
+                  {selectedEntries.length} {selectedEntries.length === 1 ? "item" : "items"}{" "}
+                  selected
+                </span>
+                {selectedTotalSize > 0 ? ` (${formatSize(selectedTotalSize)})` : ""}
+                <span className="mx-1.5 text-neutral-300 dark:text-neutral-600">|</span>
+                <span>
+                  {visible.length} {visible.length === 1 ? "item" : "items"} total
+                </span>
+              </>
+            ) : (
+              `${visible.length} ${visible.length === 1 ? "item" : "items"}`
+            )}
           </span>
           <span>{formatSize(totalSize(visible))}</span>
         </div>
@@ -447,18 +709,35 @@ export function FilesApp() {
           x={menu.x}
           y={menu.y}
           entry={menu.entry}
+          selectedEntries={selectedEntries}
           onOpen={() => {
             if (menu.entry) openEntry(menu.entry);
             else goTo(path);
           }}
           onDownload={() => {
-            if (menu.entry?.type === "file") {
-              window.location.href = downloadUrl(serverId, menu.entry.path);
+            if (selectedEntries.length > 1) {
+              void onDownloadSelected(selectedEntries);
+            } else if (menu.entry) {
+              void onDownloadSelected([menu.entry]);
             }
           }}
-          onCopyPath={() => copyPath(menu.entry?.path || path)}
+          onDelete={() => {
+            if (selectedEntries.length > 0) {
+              setPendingDelete(selectedEntries);
+            } else if (menu.entry) {
+              setPendingDelete([menu.entry]);
+            }
+          }}
+          onCopyPath={() => {
+            if (selectedEntries.length > 1) {
+              copyPath(selectedEntries.map((e) => e.path).join("\n"));
+            } else {
+              copyPath(menu.entry?.path || path);
+            }
+          }}
           onInfo={() => openInfo(menu.entry)}
           onTerminalHere={() => openTerminalHere(menu.entry)}
+          onClearSelection={clearSelection}
           onClose={() => setMenu(null)}
         />
       ) : null}

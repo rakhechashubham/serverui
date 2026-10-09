@@ -33,7 +33,8 @@ On any machine with Docker running:
 curl -fsSL https://raw.githubusercontent.com/Real-Yash/serverui/main/install.sh | bash
 ```
 
-This clones stable upstream code into `~/serverui`, generates secrets in `.env`,
+This clones upstream code into `~/serverui` (`main` by default — pin a stable
+release with `--version v0.2.0`), generates secrets in `.env`,
 and starts the web UI on `http://localhost:3000` (API on `:8080`). First run
 builds images, so allow a few minutes. Useful options:
 
@@ -162,7 +163,8 @@ serverui/
 ├── scripts/                 desktop release helpers, e2e, pre-commit
 ├── .githooks/               local commit hooks (via `make hooks`)
 ├── .github/workflows/       ci, desktop matrix, desktop releases
-├── install.sh               one-line Docker installer
+├── install.sh               one-line Docker installer (Linux/macOS/Git Bash)
+├── install.ps1              one-line Docker installer (native Windows PowerShell)
 ├── Makefile
 ├── .env.example             canonical config template (copy to .env)
 └── README.md / CONTRIBUTING.md / SECURITY.md / LICENSE

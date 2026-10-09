@@ -97,6 +97,16 @@ case "$INSTALL_DIR" in
   "~")   INSTALL_DIR="$HOME" ;;
 esac
 
+valid_port() {
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
+}
+
+valid_port "$WEB_PORT" || { log_error "--web-port must be 1-65535 (got: $WEB_PORT)"; exit 1; }
+valid_port "$HTTP_PORT" || { log_error "--api-port must be 1-65535 (got: $HTTP_PORT)"; exit 1; }
+
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || {
     log_error "Required command '$1' not found. Please install it and re-run."
@@ -141,8 +151,8 @@ port_in_use() {
 
 case "${OSTYPE:-}" in
   msys*|cygwin*|win32*)
-    log_warn "Windows detected: run this from Git Bash or WSL2 with Docker Desktop running."
-    log_warn "Native PowerShell/cmd is not supported (a future install.ps1 may cover it)."
+    log_warn "Windows shell detected: this script runs under Git Bash/WSL2 with Docker Desktop."
+    log_warn "For a native experience use install.ps1 instead (see README)."
     ;;
 esac
 
@@ -191,17 +201,23 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   git -C "$INSTALL_DIR" checkout "$VERSION"
   git -C "$INSTALL_DIR" pull --ff-only origin "$VERSION" || true
 elif [ -e "$INSTALL_DIR" ] && [ -n "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
-  if [ "$ASSUME_YES" = false ] && [ -t 0 ]; then
-    printf "Directory %s exists and is not empty. Clone into it anyway? [y/N] " "$INSTALL_DIR"
-    read -r answer
-    case "$answer" in
-      [yY]|[yY][eE][sS]) ;;
-      *) log_error "Aborted."; exit 1 ;;
-    esac
+  if [ "$ASSUME_YES" = false ]; then
+    if [ -t 0 ]; then
+      printf "Directory %s exists and is not empty. Clone into it anyway? [y/N] " "$INSTALL_DIR"
+      read -r answer
+      case "$answer" in
+        [yY]|[yY][eE][sS]) ;;
+        *) log_error "Aborted."; exit 1 ;;
+      esac
+    else
+      log_error "Directory $INSTALL_DIR exists and is not empty."
+      log_error "Re-run with --yes to merge into it, or pass an empty --dir."
+      exit 1
+    fi
   fi
   log_info "Cloning ServerUI (${VERSION}) into existing dir..."
   git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$INSTALL_DIR.tmp.$$"
-  cp -a "$INSTALL_DIR.tmp.$$"/. "$INSTALL_DIR"/
+  cp -R "$INSTALL_DIR.tmp.$$"/. "$INSTALL_DIR"/   # cp -R: BSD/GNU portable (no -a)
   rm -rf "$INSTALL_DIR.tmp.$$"
 else
   log_info "Cloning ServerUI (${VERSION})..."

@@ -121,7 +121,8 @@ function Test-PortInUse($Port) {
   $client = New-Object Net.Sockets.TcpClient
   try {
     $iar = $client.BeginConnect('127.0.0.1', $Port, $null, $null)
-    return $iar.AsyncWaitHandle.WaitOne(500)
+    # WaitOne alone is not enough: a refused connection also completes.
+    return ($iar.AsyncWaitHandle.WaitOne(500) -and $client.Connected)
   }
   catch { return $false }
   finally { $client.Close() }
@@ -162,6 +163,9 @@ if ($LASTEXITCODE -ne 0) {
   Write-Fail 'Update Docker Desktop, then re-run.'
   exit 1
 }
+
+if (($WebPort -lt 1) -or ($WebPort -gt 65535)) { Write-Fail "-WebPort must be 1-65535 (got: $WebPort)."; exit 1 }
+if (($ApiPort -lt 1) -or ($ApiPort -gt 65535)) { Write-Fail "-ApiPort must be 1-65535 (got: $ApiPort)."; exit 1 }
 
 if (Test-PortInUse $WebPort) {
   Write-Warn "Port $WebPort looks occupied. The web UI may fail to start — use -WebPort to pick another."

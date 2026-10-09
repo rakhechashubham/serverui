@@ -2,12 +2,30 @@
 
 import { ExternalLink } from "lucide-react";
 import { EditorMacIcon } from "@/src/components/desktop/mac-icons";
+import { TextEditor } from "@/src/components/apps/editor/TextEditor";
+import { useWindowManager, type WindowPayload } from "@/src/components/window/window-context";
 
 const PX0_GITHUB = "https://github.com/px0-ai/px0";
 const PX0_SITE = "https://px0.ai/";
 const ARPIT_SITE = "https://arpitbhayani.me/";
 
-export function EditorApp() {
+export function EditorApp({ payload, windowId }: { payload?: WindowPayload; windowId: string }) {
+  const { closeWindow } = useWindowManager();
+  // Opened on a file (Edit from Files): a plain text editor until px0 lands.
+  if (payload?.filePath) {
+    return (
+      <TextEditor
+        filePath={payload.filePath}
+        fileName={payload.fileName || payload.filePath.split("/").pop() || payload.filePath}
+        windowId={windowId}
+        onClose={() => closeWindow(windowId)}
+      />
+    );
+  }
+  return <Px0Placeholder />;
+}
+
+function Px0Placeholder() {
   return (
     <div className="h-full overflow-auto text-[#f4f4f5]">
       <div className="flex min-h-full flex-col items-center justify-center px-8 py-10 text-center">

@@ -29,6 +29,7 @@ type FileContextMenuProps = FileMenuActions & {
   entry: FileEntry | null;
   selectedEntries?: FileEntry[];
   canPaste: boolean;
+  onEdit?: () => void;
   /** True while an extraction runs in this window; Extract items are disabled. */
   extracting?: boolean;
   onClose: () => void;
@@ -78,6 +79,7 @@ export function menuItems({
   const archive = isArchive(entry);
   return [
     { label: "Open", run: a.onOpen },
+    ...(!dir && a.onEdit ? [{ label: "Edit", run: a.onEdit }] : []),
     ...(dir ? [{ label: "Open Terminal", run: a.onTerminalHere }] : []),
     { label: "Copy Path", run: a.onCopyPath },
     { label: "Details", run: a.onInfo },

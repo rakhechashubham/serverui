@@ -45,7 +45,7 @@ function AppBody({
     case "terminal":
       return <TerminalApp payload={payload} />;
     case "editor":
-      return <EditorApp />;
+      return <EditorApp payload={payload} windowId={windowId} />;
     case "viewer":
       return <FileViewer payload={payload} windowId={windowId} />;
     case "applications":

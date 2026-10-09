@@ -316,6 +316,8 @@ export function WindowManagerProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "open", app, payload });
   }, []);
   const closeWindow = useCallback((id: string) => {
+    if (closeGuards.get(id)?.() === false) return;
+    closeGuards.delete(id);
     dispatch({ type: "close", id });
   }, []);
   const minimizeWindow = useCallback((id: string) => {
@@ -388,7 +390,20 @@ export function useWindowManager() {
   return context;
 }
 
+// A window can veto its own close (an editor with unsaved changes). The guard returns false to keep it open.
+const closeGuards = new Map<string, () => boolean>();
+
+export function setCloseGuard(id: string, guard: (() => boolean) | null) {
+  if (guard) closeGuards.set(id, guard);
+  else closeGuards.delete(id);
+}
+
+export function editorWindowId(filePath: string) {
+  return `editor:${filePath}`;
+}
+
 function windowId(app: AppId, payload?: WindowPayload) {
+  if (app === "editor" && payload?.filePath) return editorWindowId(payload.filePath);
   if (app === "viewer" && payload?.filePath) {
     if (payload.infoOnly || payload.isDirectory) {
       return `viewer:info:${payload.filePath}`;
@@ -399,7 +414,7 @@ function windowId(app: AppId, payload?: WindowPayload) {
 }
 
 function windowTitle(app: AppId, payload?: WindowPayload) {
-  if (app === "viewer") {
+  if (app === "viewer" || (app === "editor" && payload?.filePath)) {
     return payload?.fileName || payload?.filePath?.split("/").filter(Boolean).pop() || "Viewer";
   }
   return APP_META[app].title;

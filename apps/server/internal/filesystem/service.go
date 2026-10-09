@@ -26,6 +26,7 @@ type Preview struct {
 	Truncated bool   `json:"truncated"`
 	Mime      string `json:"mime"`
 	Binary    bool   `json:"binary"`
+	Writable  bool   `json:"writable"`
 }
 
 type Entry struct {
@@ -161,6 +162,13 @@ func (s *Service) Preview(serverID, rawPath string) (Preview, error) {
 	if !binary {
 		content = string(data)
 	}
+	// Opening for write without O_TRUNC or O_CREATE touches nothing, and answers with the
+	// server's real permission check (owner, group, ACLs, read-only mounts) for this SSH user.
+	writable := false
+	if probe, err := client.OpenFile(cleaned, os.O_WRONLY); err == nil {
+		writable = true
+		_ = probe.Close()
+	}
 	return Preview{
 		Path:      cleaned,
 		Content:   content,
@@ -168,6 +176,7 @@ func (s *Service) Preview(serverID, rawPath string) (Preview, error) {
 		Truncated: truncated,
 		Mime:      mime,
 		Binary:    binary,
+		Writable:  writable,
 	}, nil
 }
 

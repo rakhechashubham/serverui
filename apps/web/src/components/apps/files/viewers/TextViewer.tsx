@@ -5,6 +5,7 @@ import { ApiError } from "@/src/lib/api/client";
 import { downloadUrl, readFile } from "@/src/lib/api/files";
 import { looksLikeText } from "@/src/lib/files/file-type";
 import { useSelectedServer } from "@/src/lib/session";
+import { useWindowManager } from "@/src/components/window/window-context";
 import { ViewerMessage, type ViewerFile } from "@/src/components/apps/files/viewers/viewer-ui";
 
 export function TextViewer({ file, onClose }: { file: ViewerFile; onClose: () => void }) {
@@ -118,6 +119,7 @@ export function PreviewToolbar({
   serverId: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const { openWindow } = useWindowManager();
   return (
     <div className="sui-toolbar flex items-center justify-end gap-2 border-b sui-hairline px-3 py-2">
       {truncated ? (
@@ -136,6 +138,17 @@ export function PreviewToolbar({
       >
         {copied ? "Copied" : "Copy"}
       </button>
+      {truncated ? null : (
+        <button
+          type="button"
+          className={darkCopyClass}
+          onClick={() =>
+            openWindow("editor", { filePath: path, fileName: path.split("/").pop() || path })
+          }
+        >
+          Edit
+        </button>
+      )}
       <a href={downloadUrl(serverId, path)} className={darkCopyClass}>
         Download
       </a>

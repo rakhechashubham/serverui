@@ -23,6 +23,7 @@ export type FileContent = {
   truncated?: boolean;
   mime?: string;
   binary?: boolean;
+  writable?: boolean;
 };
 
 function fileQuery(serverId: string, extra: Record<string, string>) {
@@ -41,6 +42,8 @@ export function writeFile(serverId: string, path: string, content: string) {
   return apiRequest<{ status: string }>("/api/files/write", {
     method: "POST",
     body: JSON.stringify({ serverId, path, content }),
+    // The default 5s is too short to upload a few MB over a slow link.
+    timeoutMs: 60_000,
   });
 }
 

@@ -253,7 +253,16 @@ if [ -z "$ready" ]; then
   exit 1
 fi
 
-if curl -fsS "http://127.0.0.1:${WEB_PORT}/healthz" >/dev/null 2>&1; then
+web_ready=""
+for ((i = 0; i < 15; i++)); do
+  if curl -fsS "http://127.0.0.1:${WEB_PORT}/healthz" >/dev/null 2>&1; then
+    web_ready="yes"
+    break
+  fi
+  sleep 2
+done
+
+if [ -n "$web_ready" ]; then
   log_info "Web UI is responding too."
 else
   log_warn "API is up but the web UI on :${WEB_PORT} is not responding yet — give it a minute, then check 'docker compose logs web'."

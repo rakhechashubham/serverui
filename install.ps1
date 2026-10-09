@@ -271,7 +271,13 @@ if (-not $ready) {
   exit 1
 }
 
-if (Test-Health "http://127.0.0.1:${WebPort}/healthz") {
+$webReady = $false
+for ($i = 0; $i -lt 15; $i++) {
+  if (Test-Health "http://127.0.0.1:${WebPort}/healthz") { $webReady = $true; break }
+  Start-Sleep -Seconds 2
+}
+
+if ($webReady) {
   Write-Info 'Web UI is responding too.'
 }
 else {

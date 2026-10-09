@@ -33,6 +33,7 @@ import {
 } from "@/src/lib/api/files";
 import { useWindowManager } from "@/src/components/window/window-context";
 import { useServer } from "@/src/lib/api/server-context";
+import { codeServerInstalled } from "@/src/lib/api/store";
 import { useSelectedServer } from "@/src/lib/session";
 import { formatSize, totalSize } from "@/src/lib/files/format";
 import { Breadcrumbs } from "@/src/components/apps/files/Breadcrumbs";
@@ -146,6 +147,8 @@ export function FilesApp() {
   // The server resolves "~" to the user's real home (e.g. /root for root);
   // remember it so the sidebar can highlight Home.
   const [homeDir, setHomeDir] = useState<string | null>(null);
+  // "Edit with Code" only exists in the menu once VS Code is on this server.
+  const [codeInstalled, setCodeInstalled] = useState(false);
 
   async function load(nextPath: string) {
     if (!serverId) return;
@@ -171,6 +174,21 @@ export function FilesApp() {
   useEffect(() => {
     pathRef.current = path;
   }, [path]);
+
+  useEffect(() => {
+    if (!serverId) return;
+    let cancelled = false;
+    codeServerInstalled(serverId)
+      .then((installed) => {
+        if (!cancelled) setCodeInstalled(installed);
+      })
+      .catch(() => {
+        // The menu simply omits the item when the server cannot be checked.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [serverId]);
 
   useEffect(() => {
     if (!serverId) return;
@@ -689,6 +707,10 @@ export function FilesApp() {
         setLastSelectedPath(entry.path);
       }
     }
+    // The Store may have installed VS Code since this window opened; this reads its last detection.
+    void codeServerInstalled(serverId)
+      .then(setCodeInstalled)
+      .catch(() => {});
     const width = 210;
     const height = 360;
     setMenu({
@@ -1256,6 +1278,18 @@ export function FilesApp() {
           onNewFile={newFile}
           onUpload={pickUpload}
           canPaste={Boolean(clipboard)}
+          onEditWithCode={
+            codeInstalled
+              ? () =>
+                  menu.entry
+                    ? openWindow("vscode", {
+                        filePath: menu.entry.path,
+                        fileName: menu.entry.name,
+                        isDirectory: menu.entry.type === "dir",
+                      })
+                    : openWindow("vscode", { filePath: path, isDirectory: true })
+              : undefined
+          }
           onCompress={() => openCompress(menuTargets(menu.entry))}
           onExtractHere={() => menu.entry && void onExtract(menu.entry, "here")}
           onExtractTo={() =>

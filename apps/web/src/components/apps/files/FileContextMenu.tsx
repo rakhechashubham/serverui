@@ -29,6 +29,8 @@ type FileContextMenuProps = FileMenuActions & {
   entry: FileEntry | null;
   selectedEntries?: FileEntry[];
   canPaste: boolean;
+  /** Only given when VS Code is installed on the server; without it the item is hidden. */
+  onEditWithCode?: () => void;
   /** True while an extraction runs in this window; Extract items are disabled. */
   extracting?: boolean;
   onClose: () => void;
@@ -53,6 +55,7 @@ export function menuItems({
   if (!entry) {
     return [
       { label: "Open Terminal", run: a.onTerminalHere },
+      ...(a.onEditWithCode ? [{ label: "Open Folder in VS Code", run: a.onEditWithCode }] : []),
       { label: "Paste", run: a.onPaste, disabled: !canPaste },
       "separator",
       { label: "New Folder", run: a.onNewFolder },
@@ -79,6 +82,9 @@ export function menuItems({
   return [
     { label: "Open", run: a.onOpen },
     ...(dir ? [{ label: "Open Terminal", run: a.onTerminalHere }] : []),
+    ...(a.onEditWithCode
+      ? [{ label: dir ? "Open in VS Code" : "Edit with Code", run: a.onEditWithCode }]
+      : []),
     { label: "Copy Path", run: a.onCopyPath },
     { label: "Details", run: a.onInfo },
     ...(dir ? [] : [{ label: "Download", run: a.onDownload }]),

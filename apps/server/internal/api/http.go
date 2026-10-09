@@ -10,7 +10,9 @@ import (
 	"strconv"
 	"strings"
 
+	"serverui/server/internal/appstore"
 	"serverui/server/internal/archive"
+	"serverui/server/internal/codeserver"
 	"serverui/server/internal/filesystem"
 	"serverui/server/internal/metrics"
 	"serverui/server/internal/servers"
@@ -23,11 +25,13 @@ type Server struct {
 	metrics  *metrics.Collector
 	files    *filesystem.Service
 	archives *archive.Service
+	store    *appstore.Service
+	code     *codeserver.Service
 	term     *terminal.Handler
 }
 
-func New(svc *servers.Service, collector *metrics.Collector, files *filesystem.Service, archives *archive.Service, term *terminal.Handler) *Server {
-	return &Server{servers: svc, metrics: collector, files: files, archives: archives, term: term}
+func New(svc *servers.Service, collector *metrics.Collector, files *filesystem.Service, archives *archive.Service, store *appstore.Service, code *codeserver.Service, term *terminal.Handler) *Server {
+	return &Server{servers: svc, metrics: collector, files: files, archives: archives, store: store, code: code, term: term}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -71,6 +75,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/files/extract/{job}", s.extractStatus)
 	mux.HandleFunc("POST /api/files/extract/{job}/resolve", s.resolveExtract)
 	mux.HandleFunc("DELETE /api/files/extract/{job}", s.cancelExtract)
+	mux.HandleFunc("GET /api/store/apps", s.storeApps)
+	mux.HandleFunc("POST /api/store/jobs", s.startStoreJob)
+	mux.HandleFunc("GET /api/store/jobs/{job}", s.storeJob)
+	mux.HandleFunc("POST /api/code/{id}/start", s.startCode)
+	mux.HandleFunc("/api/code/{id}/", s.proxyCode)
+	mux.HandleFunc("/api/code/{id}", s.proxyCodeRoot)
 	if s.term != nil {
 		mux.Handle("/ws/terminal", s.term)
 	}

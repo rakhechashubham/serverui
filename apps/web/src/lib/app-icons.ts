@@ -26,4 +26,5 @@ export const APP_ICONS: Record<AppId, LucideIcon> = {
   settings: Settings,
   about: Info,
   viewer: Eye,
+  vscode: Code2,
 };

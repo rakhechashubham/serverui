@@ -96,6 +96,11 @@ vi.mock("@/src/lib/api/server-context", () => ({
   useServer: () => ({ server: { username: "deploy" } }),
 }));
 
+// Files asks the store whether VS Code is installed; keep that SSH detection out of these tests.
+vi.mock("@/src/lib/api/store", () => ({
+  codeServerInstalled: vi.fn(async () => false),
+}));
+
 // Most tests here drive the list view (rows are <tr>); Finder icon-view tests set their own view.
 beforeEach(() => {
   localStorage.setItem("serverui-files-view", "list");

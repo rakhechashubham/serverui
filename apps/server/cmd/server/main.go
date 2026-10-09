@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"serverui/server/internal/api"
+	"serverui/server/internal/appstore"
 	"serverui/server/internal/archive"
+	"serverui/server/internal/codeserver"
 	"serverui/server/internal/crypto"
 	"serverui/server/internal/db"
 	"serverui/server/internal/filesystem"
@@ -56,6 +58,8 @@ func main() {
 		metrics.NewCollector(pool),
 		files,
 		archive.New(pool, files.List),
+		appstore.New(pool),
+		codeserver.New(pool, codeserver.SSHDial(pool.Ensure)),
 		terminal.New(pool),
 	).Handler()
 

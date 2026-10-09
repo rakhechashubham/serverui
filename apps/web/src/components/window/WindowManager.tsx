@@ -10,6 +10,7 @@ import { FileViewer } from "@/src/components/apps/files/viewers/FileViewer";
 import { FilesApp } from "@/src/components/apps/FilesApp";
 import { SettingsApp } from "@/src/components/apps/SettingsApp";
 import { TerminalApp } from "@/src/components/apps/TerminalApp";
+import { VsCodeApp } from "@/src/components/apps/VsCodeApp";
 import { Window } from "@/src/components/window/Window";
 import { useWindowManager, type WindowPayload } from "@/src/components/window/window-context";
 import type { AppId } from "@/src/data/apps";
@@ -48,6 +49,8 @@ function AppBody({
       return <EditorApp />;
     case "viewer":
       return <FileViewer payload={payload} windowId={windowId} />;
+    case "vscode":
+      return <VsCodeApp payload={payload} />;
     case "applications":
       return <ApplicationsApp />;
     case "domains":

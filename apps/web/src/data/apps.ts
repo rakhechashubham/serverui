@@ -10,14 +10,10 @@ export const APP_IDS = [
 ] as const;
 
 export type DockAppId = (typeof APP_IDS)[number];
-export type AppId = DockAppId | "about" | "viewer";
+export type AppId = DockAppId | "about" | "viewer" | "vscode";
 
 /** Apps that stay in the catalog but are not shown on the dock. */
-export const DOCK_HIDDEN_IDS: ReadonlySet<DockAppId> = new Set([
-  "applications",
-  "domains",
-  "databases",
-]);
+export const DOCK_HIDDEN_IDS: ReadonlySet<DockAppId> = new Set(["domains", "databases"]);
 
 export function visibleDockOrder(order: readonly DockAppId[]): DockAppId[] {
   return order.filter((id) => !DOCK_HIDDEN_IDS.has(id));
@@ -66,11 +62,18 @@ export const APP_META: Record<
     available: false,
     chrome: "dark",
   },
+  vscode: {
+    title: "VS Code",
+    width: 1180,
+    height: 740,
+    available: true,
+    chrome: "dark",
+  },
   applications: {
-    title: "Applications",
-    width: 480,
-    height: 520,
-    available: false,
+    title: "Store",
+    width: 860,
+    height: 580,
+    available: true,
     chrome: "light",
   },
   domains: {

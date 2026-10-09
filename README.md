@@ -24,14 +24,19 @@ Working in this repository:
 - Remote file manager (SFTP)
 - Archive extraction in Files (`.zip`, `.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`, `.tar.xz`, `.7z`),
   run on the server with its own `tar` / `unzip` / `7z`
+- Store: see which tools are installed on the server (VS Code, Claude Code, Bun, Git, Docker,
+  Node.js) and install, update, or remove the ones it manages, from a fixed catalogue.
+  See [docs/store.md](docs/store.md), including how to add an app
+- VS Code in a window: the Store installs code-server, ServerUI runs it on the server and
+  proxies it over the existing SSH connection. Files gets "Edit with Code" when it is installed
 - CPU, memory, disk, and uptime metrics from the selected server
 - Linux-inspired desktop, window manager, and server switcher
 - AES-256-GCM encryption for stored credentials
 
 Not implemented yet (UI may show Coming Soon):
 
-- In-browser code editor
-- Application, domain, and database management
+- The dock's built-in Editor (VS Code from the Store covers editing for now)
+- Domain and database management
 - ServerUI CLI
 - ServerUI agent
 
@@ -68,7 +73,8 @@ Architecture** for Web / Desktop / Source). Desktop hardening:
 [docs/desktop-storage.md](docs/desktop-storage.md). Releases and installers:
 [docs/releases.md](docs/releases.md). Product audit / manual QA:
 [docs/product-audit.md](docs/product-audit.md),
-[docs/manual-qa.md](docs/manual-qa.md).
+[docs/manual-qa.md](docs/manual-qa.md). Store and how to add an app:
+[docs/store.md](docs/store.md).
 
 ## How it works
 
@@ -96,6 +102,7 @@ serverui/
 │   ├── product-audit.md
 │   ├── manual-qa.md
 │   ├── releases.md
+│   ├── store.md
 │   └── images/
 ├── scripts/
 │   └── pre-commit
@@ -372,8 +379,15 @@ No. Makefile targets for them were removed because the code is not in this repos
 - Passphrase-protected private keys are rejected with an explicit error.
 - Host key verification accepts any remote host key (TOFU / pinning is not implemented).
 - There is no user login, SSO, or RBAC for the ServerUI app itself.
-- Editor, Applications, Domains, Databases, and Settings are not implemented.
+- The dock's Editor, Domains, and Databases are not implemented.
 - CLI and agent are not implemented.
+- Store installs run the vendors' own install scripts on the server and need `curl`. Git needs
+  root or passwordless `sudo` and apt, dnf, or apk. Docker and Node.js are detected only.
+  "Update" reinstalls the latest version; there is no "update available" indicator yet.
+- VS Code runs without its own password: it listens on a Unix socket readable only by the SSH
+  user and is reachable only through ServerUI, which has no login (see above). It is not
+  supported in the desktop app yet, because an iframe cannot send the local auth header.
+  Closing the VS Code window does not stop it on the server; removing it from the Store does.
 - Archive extraction needs `tar` (plus `gzip` / `bzip2` / `xz`), Info-ZIP `unzip`, or
   `7z` on the server. Password-protected archives, `.rar`, and single compressed
   files such as `.gz` are not supported.

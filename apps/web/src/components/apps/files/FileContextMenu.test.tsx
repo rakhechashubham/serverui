@@ -98,4 +98,19 @@ describe("file context menu", () => {
     ]);
     expect(labels(a, [a, dir])).not.toContain("Download (2 items)");
   });
+
+  it("offers VS Code only when the server has it, next to Open", () => {
+    const withCode = (entryArg: FileEntry | null) =>
+      menuItems({ ...actions, entry: entryArg, canPaste: false, onEditWithCode: noop })
+        .filter((item) => item !== "separator")
+        .map((item) => item.label);
+
+    expect(labels(entry("notes.txt"))).not.toContain("Edit with Code");
+    expect(labels(entry("www", "dir"))).not.toContain("Open in VS Code");
+    expect(labels(null)).not.toContain("Open Folder in VS Code");
+
+    expect(withCode(entry("notes.txt")).slice(0, 2)).toEqual(["Open", "Edit with Code"]);
+    expect(withCode(entry("www", "dir"))).toContain("Open in VS Code");
+    expect(withCode(null)).toContain("Open Folder in VS Code");
+  });
 });

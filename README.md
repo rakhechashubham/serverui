@@ -1,45 +1,124 @@
 # ServerUI
 
+[![License](https://img.shields.io/github/license/rakhechashubham/serverui)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/rakhechashubham/serverui)](https://github.com/rakhechashubham/serverui/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/rakhechashubham/serverui/ci.yml?branch=main&label=ci)](https://github.com/rakhechashubham/serverui/actions)
+
 ServerUI is a modern, open-source control panel for managing your servers from a browser
 or the native desktop app.
 
 It presents a Linux-inspired desktop UI. You add SSH servers, connect, and use
-Files, Terminal, and live CPU/RAM/disk metrics against the machine you selected. The
-UI never opens SSH. A Go backend stores encrypted credentials and dials each host.
-
-**Prefer installers?** Download macOS / Windows / Linux packages from
-[GitHub Releases](https://github.com/rakhechashubham/serverui/releases)
-(you do not need to build from source). See [docs/releases.md](docs/releases.md).
+Files, Terminal, and live CPU/RAM/disk metrics against the machine you selected.
+**Your browser never opens SSH** — a Go backend stores encrypted credentials and
+dials each host for you.
 
 ![ServerUI desktop with the file manager open](docs/images/desktop.jpg)
 
+## Install
+
+Pick the path that fits you:
+
+| Path | Command | Needs |
+| ---- | ------- | ----- |
+| **Self-host, Linux/macOS** | `curl -fsSL https://raw.githubusercontent.com/Real-Yash/serverui/main/install.sh \| bash` | Docker + bash/curl/git |
+| **Self-host, Windows** | `irm https://raw.githubusercontent.com/Real-Yash/serverui/main/install.ps1 \| iex` (see below) | Docker Desktop + Git |
+| **Desktop app** | Download from [GitHub Releases](https://github.com/rakhechashubham/serverui/releases) | Nothing else |
+| **From source** | `git clone` + `make start` (below) | Docker, Node 22, Go 1.26, Make |
+
+### One-line self-host
+
+On any machine with Docker running:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Real-Yash/serverui/main/install.sh | bash
+```
+
+This clones upstream code into `~/serverui` (`main` by default — pin a stable
+release with `--version v0.2.0`), generates secrets in `.env`,
+and starts the web UI on `http://localhost:3000` (API on `:8080`). First run
+builds images, so allow a few minutes. Useful options:
+
+```bash
+# Pin a release, custom directory or ports
+curl -fsSL https://raw.githubusercontent.com/Real-Yash/serverui/main/install.sh | bash -s -- --version v0.2.0 --dir ~/.serverui
+./install.sh --help       # all flags: --web-port, --api-port, --yes, --uninstall
+```
+
+The installer pulls upstream releases by default. To install from a fork instead:
+
+```bash
+SERVERUI_REPO_URL=https://github.com/Real-Yash/serverui.git ./install.sh
+```
+
+### One-line self-host on Windows
+
+Native PowerShell (5.1+), no WSL or Git Bash needed — Docker Desktop must be running:
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/Real-Yash/serverui/main/install.ps1)))
+```
+
+With options:
+
+```powershell
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/Real-Yash/serverui/main/install.ps1))) -Version v0.2.0 -WebPort 3100 -ApiPort 8180
+```
+
+`install.ps1` mirrors `install.sh` (`-Version`, `-Dir`, `-WebPort`, `-ApiPort`,
+`-Yes`, `-Uninstall`, `-Help`). On older systems, enable TLS 1.2 first:
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+```
+
+### Desktop app
+
+Download the installer for your platform (macOS `.dmg`, Windows `-setup.exe`,
+Linux `.AppImage`/`.deb`) from
+[GitHub Releases](https://github.com/rakhechashubham/serverui/releases), verify
+the SHA-256 checksums, and launch. No Docker, PostgreSQL, Node, Go, or Rust is
+needed — local SQLite is created automatically. Details: [docs/releases.md](docs/releases.md).
+
+### From source
+
+```bash
+git clone https://github.com/rakhechashubham/serverui.git
+cd serverui
+cp .env.example .env
+make setup-env   # generates SERVERUI_CREDENTIAL_ENCRYPTION_KEY if empty
+make hooks       # optional: local commit checks (CI is the real gate)
+make start       # build + start web, API, Postgres in the background
+```
+
+Then open [http://localhost:3000](http://localhost:3000). The API listens on
+[http://localhost:8080](http://localhost:8080).
+
+> Contributing from a fork? Clone your fork instead, then open a PR against
+> upstream. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Add a server in the UI (name, host, SSH port, username, password or private key).
+ServerUI tests SSH from the Go container, stores the encrypted secret, and connects
+when you choose **Connect**.
+
 ## Features
 
-Working in this repository:
-
 - Multi-server add, edit, delete, connect, disconnect, and connection test
-- SSH password authentication
-- SSH private-key authentication (unencrypted OpenSSH / PEM keys)
+- SSH password and private-key authentication (unencrypted OpenSSH / PEM keys)
 - Browser terminal over WebSocket → SSH PTY
-- Remote file manager (SFTP)
-- Archive extraction in Files (`.zip`, `.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`, `.tar.xz`, `.7z`),
-  run on the server with its own `tar` / `unzip` / `7z`
-- CPU, memory, disk, and uptime metrics from the selected server
+- Remote file manager (SFTP) with archive extraction
+  (`.zip`, `.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`, `.tar.xz`, `.7z`),
+  using the server's own `tar` / `unzip` / `7z`
+- Live CPU, memory, disk, and uptime metrics for the selected server
 - Linux-inspired desktop, window manager, and server switcher
 - AES-256-GCM encryption for stored credentials
+- Settings (About, runtime, shortcuts, desktop updates)
 
-Not implemented yet (UI may show Coming Soon):
-
-- In-browser code editor
-- Application, domain, and database management
-- ServerUI CLI
-- ServerUI agent
-
-Settings (About, runtime, shortcuts; desktop updates) is available.
-
+Not implemented yet (UI may show Coming Soon): in-browser code editor;
+application, domain, and database management; ServerUI CLI; ServerUI agent.
 See [Current limitations](#current-limitations).
 
-## Architecture
+## How it works
 
 ```
 Browser / UI
@@ -50,35 +129,25 @@ Next.js Web
    ▼
 Go API Server
    ├── PostgreSQL (web)  or  SQLite (desktop)
-   └── SSH
-        │
-        ▼
-     Target server
+   └── SSH ──► Target server
 ```
 
-The UI resolves the Go API through a small runtime helper so the same client can
-talk to a remote backend (web) or a local backend (desktop).
-Docker is a deployment option for web/self-hosted installs; the Go server also
-runs from source against PostgreSQL. Packaged desktop uses local SQLite and does
-not require Docker or PostgreSQL.
+The UI sends a `serverId`. The Go process loads the stored host, decrypts
+credentials, and uses a per-server SSH pool — files, terminal, and metrics are
+scoped to that ID. A WebSocket terminal is a PTY on the selected host; file
+browsing uses SFTP on the same pooled connection.
 
-Details: [docs/architecture.md](docs/architecture.md) (includes **Runtime
-Architecture** for Web / Desktop / Source). Desktop hardening:
+The same Next.js client talks to a remote backend (web) or a local backend
+(desktop) via a small runtime helper. Packaged desktop starts its own Go
+sidecar on `127.0.0.1:<dynamic-port>` with a per-launch auth token and needs
+neither Docker nor PostgreSQL.
+
+Details: [docs/architecture.md](docs/architecture.md),
+[docs/desktop.md](docs/desktop.md),
 [docs/desktop-security.md](docs/desktop-security.md),
-[docs/desktop-storage.md](docs/desktop-storage.md). Releases and installers:
-[docs/releases.md](docs/releases.md). Product audit / manual QA:
-[docs/product-audit.md](docs/product-audit.md),
+[docs/desktop-storage.md](docs/desktop-storage.md).
+Product audit / manual QA: [docs/product-audit.md](docs/product-audit.md),
 [docs/manual-qa.md](docs/manual-qa.md).
-
-## How it works
-
-The UI sends a `serverId`. The Go process loads the stored host, decrypts credentials,
-and uses a per-server SSH pool. Files, terminal, and metrics are scoped to that ID.
-
-The browser never opens an SSH connection. The Go process stores server records
-in PostgreSQL (web) or local SQLite (desktop). Secrets are encrypted at rest with
-AES-256-GCM. A WebSocket terminal is a PTY on the selected host. File browsing
-uses SFTP on that same pooled connection.
 
 ## Project structure
 
@@ -89,232 +158,76 @@ serverui/
 │   ├── server/              Go API, SSH, PostgreSQL
 │   └── desktop/             Tauri desktop shell
 ├── deploy/
-│   └── docker/              Compose files
-├── docs/
-│   ├── architecture.md
-│   ├── desktop.md
-│   ├── product-audit.md
-│   ├── manual-qa.md
-│   ├── releases.md
-│   └── images/
-├── scripts/
-│   └── pre-commit
-├── .githooks/
-│   └── pre-commit
-├── .github/
-│   ├── workflows/ci.yml
-│   ├── workflows/desktop.yml
-│   ├── workflows/desktop-release.yml
-│   ├── ISSUE_TEMPLATE/
-│   └── pull_request_template.md
+│   └── docker/              Compose files (prod, dev, desktop-db)
+├── docs/                    architecture, desktop, releases, QA
+├── scripts/                 desktop release helpers, e2e, pre-commit
+├── .githooks/               local commit hooks (via `make hooks`)
+├── .github/workflows/       ci, desktop matrix, desktop releases
+├── install.sh               one-line Docker installer (Linux/macOS/Git Bash)
+├── install.ps1              one-line Docker installer (native Windows PowerShell)
 ├── Makefile
-├── README.md
-├── CONTRIBUTING.md
-├── SECURITY.md
-├── CODE_OF_CONDUCT.md
-├── LICENSE
-└── .env.example
+├── .env.example             canonical config template (copy to .env)
+└── README.md / CONTRIBUTING.md / SECURITY.md / LICENSE
 ```
 
 ## Requirements
 
-Verified against this repository:
+| Tool | Version | Needed for |
+| ---- | ------- | ---------- |
+| Git | any recent | source installs |
+| Docker | 28.x (Compose v2), daemon running | `make start`, `make dev`, `install.sh` |
+| Node.js / npm | 22.x / 10.x | web dev, builds |
+| Go | 1.26 | backend dev, builds |
+| Make | GNU Make | all workflows |
+| OpenSSL | any (`openssl rand -hex 32`) | encryption key generation |
+| Rust / cargo | stable (MSRV 1.77+) | desktop only |
+| lazydocker | latest | `make dev` only |
 
-| Tool    | Version used in development |
-| ------- | --------------------------- |
-| Git     | any recent                  |
-| Docker  | 28.x (Compose v2)           |
-| Node.js | 22.x                        |
-| npm     | 10.x                        |
-| Go      | 1.26                        |
-| Rust    | stable (MSRV 1.77+) for desktop |
-| Make    | GNU Make                    |
-| OpenSSL | for generating the encryption key |
-| lazydocker | required for `make dev` |
+## Configuration
 
-Docker Desktop (or equivalent) must be running for `make start` and `make dev`.
-
-lazydocker is required for `make dev`. It is not required for `make start`.
-Install it from [lazydocker](https://github.com/jesseduffield/lazydocker).
-
-## Getting started
-
-```bash
-git clone <repository-url>
-cd serverui
-cp .env.example .env
-make setup-env
-make hooks
-make start
-```
-
-`make setup-env` copies `.env.example` when `.env` is missing and generates
-`SERVERUI_CREDENTIAL_ENCRYPTION_KEY` if the value is empty.
-
-`make hooks` is optional. It points Git at `.githooks` so local commits run
-format, lint, and tests. Hooks can be bypassed; CI is the real gate.
-
-Then open [http://localhost:3000](http://localhost:3000). The API listens on
-[http://localhost:8080](http://localhost:8080).
-
-Add a server in the UI (name, host, SSH port, username, password or private key).
-ServerUI tests SSH from the Go container, stores the encrypted secret, and connects
-when you choose **Connect**.
-
-## Environment configuration
-
-Canonical file: `.env.example` (copy to `.env`). Compose also accepts
+Canonical file: `.env.example` (copy to `.env`; `make setup-env` and
+`install.sh` do this plus key generation). Compose also accepts
 `deploy/docker/.env`.
 
 | Category | Variable | Purpose |
 | -------- | -------- | ------- |
 | Runtime | `HTTP_PORT` | Host port for the Go API |
 | Runtime | `WEB_PORT` | Host port for the web UI |
-| Database | `POSTGRES_USER` | PostgreSQL user |
-| Database | `POSTGRES_PASSWORD` | PostgreSQL password (local only) |
-| Database | `POSTGRES_DB` | Database name |
-| Database | `POSTGRES_HOST` | Optional; defaults to `127.0.0.1` natively; Compose sets `postgres` |
+| Database | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | PostgreSQL (local only) |
+| Database | `POSTGRES_HOST` | Defaults to `127.0.0.1` natively; Compose sets `postgres` |
 | Database | `DATABASE_URL` | Optional DSN; `POSTGRES_*` is enough in Compose |
-| Credentials | `SERVERUI_CREDENTIAL_ENCRYPTION_KEY` | 32-byte key as 64 hex chars (backend only) |
-| API (optional) | `NEXT_PUBLIC_API_BASE` | Browser-facing Go API origin when not same-origin |
+| Credentials | `SERVERUI_CREDENTIAL_ENCRYPTION_KEY` | 32-byte key as 64 hex chars (**backend only**, never frontend) |
+| API (optional) | `NEXT_PUBLIC_API_BASE` | Browser-facing API origin when not same-origin |
 | Deployment | `SERVER_INTERNAL_URL` | Next.js server-side rewrite target (Compose sets this) |
 
-Generate a key:
-
-```bash
-openssl rand -hex 32
-```
-
 Never commit `.env`, passwords, or private keys. Example hosts in docs use
-`203.0.113.10` and user `deploy`. Do not put the encryption key or SSH secrets
-in frontend env vars.
+`203.0.113.10` / user `deploy`.
 
 ## Development
 
-```bash
-make dev
-```
+| Command | What it does |
+| ------- | ------------ |
+| `make dev` | Dev stack (bind-mounted source, `next dev`, `go run`) + LazyDocker; containers removed on exit, DB volume kept |
+| `make start` | Build + start production stack detached (web, API, Postgres) |
+| `make test` | Vitest (`apps/web`) + `go test ./...` + release-helper + desktop (if cargo) tests |
+| `make lint` | ESLint + `go vet` |
+| `make format` / `make format-check` | gofmt + Prettier / verify only |
+| `make build` | Next.js production build + `bin/serverui-server` |
+| `make docker-build` / `docker-ps` / `docker-logs` / `docker-down` | Prod image build / inspect / logs / stop |
+| `make docker-up` | Dev stack in background without LazyDocker |
+| `make desktop-dev` | Tauri + Next.js + local Go backend (SQLite by default, no Postgres needed) |
+| `make desktop-build` | Tauri bundle for the current host (unsigned unless CI secrets set) |
+| `make desktop-build-macos` / `-windows-x64` / `-linux-x64` | Native per-OS installers (run on that OS) |
+| `make desktop-build-all` | Prints the full CI release flow (tags → GitHub Actions matrix) |
 
-This starts the development Docker environment (bind-mounted source, `next dev`,
-`go run`) and opens LazyDocker automatically.
-
-When you exit LazyDocker — or press Ctrl+C — ServerUI's development containers
-are removed. The PostgreSQL volume is preserved, so the local database is reused
-the next time you run `make dev`.
-
-`make docker-tui` only opens LazyDocker for already-running services. It does not
-start or stop the stack.
-
-### Desktop application
-
-**Install (recommended for users):** download a release artifact from
-[GitHub Releases](https://github.com/rakhechashubham/serverui/releases), verify
-SHA-256 checksums, install, and launch. No PostgreSQL, Docker, Node, Go, or Rust
-is required for packaged desktop — local SQLite is created automatically. Details:
-[docs/releases.md](docs/releases.md), [docs/desktop.md](docs/desktop.md),
-[docs/desktop-storage.md](docs/desktop-storage.md).
-
-**Develop from source:** requires Rust/cargo in addition to the web prerequisites.
-Default desktop-dev uses local SQLite (no Postgres required):
-
-```bash
-make setup-env
-make desktop-dev
-```
-
-Optional Postgres desktop testing: `make desktop-db` then
-`SERVERUI_STORAGE=postgres make desktop-dev`.
-
-Tauri loads the Next.js UI and starts `bin/serverui-server` on
-`127.0.0.1:<dynamic-port>` with a per-launch local auth token. See
-[docs/desktop.md](docs/desktop.md) and [apps/desktop/README.md](apps/desktop/README.md).
-
-```bash
-make desktop-build
-make desktop-build-macos          # arm64 + x64 → dist/macos/
-make desktop-build-windows-x64    # Windows host only
-make desktop-build-linux-x64      # Linux host only
-make desktop-build-all            # CI release instructions (no fake cross-build)
-```
-
-Builds a Tauri bundle (platform installers depending on host) with a static UI
-export and sidecared Go binary. Signing and updater signatures require CI
-secrets; local builds are unsigned by default. Full production matrix:
-[docs/releases.md](docs/releases.md).
-
-## Local production start
-
-```bash
-make start
-```
-
-This builds production images and starts web, API, and Postgres in detached mode.
-The command returns immediately. Services keep running after the terminal is free.
-
-```bash
-make docker-ps
-make docker-logs
-make docker-down
-```
-
-`make docker-up` starts the development Compose stack in the background without
-LazyDocker.
-
-Native checks (after `npm install` in `apps/web`):
-
-```bash
-make test
-make lint
-make format
-make format-check
-make build
-```
-
-Go sources live in `apps/server`. The web app lives in `apps/web`.
-
-## Testing
-
-```bash
-make test
-```
-
-Runs Vitest in `apps/web` and `go test ./...` in `apps/server`.
-
-## Linting
-
-```bash
-make lint
-```
-
-ESLint for the web app, `go vet` for the backend.
-
-## Formatting
-
-```bash
-make format         # gofmt + Prettier
-make format-check   # fail if anything would change
-```
-
-## Building
-
-```bash
-make build
-```
-
-Produces a Next.js production build in `apps/web/.next` and
-`bin/serverui-server`. Binaries and `.next` are gitignored.
-
-```bash
-make docker-build
-```
-
-Builds production Compose images without starting them. `make start` builds and
-starts those images. Development images are built by `make dev` / `make docker-up`.
+Desktop details: [apps/desktop/README.md](apps/desktop/README.md),
+[docs/releases.md](docs/releases.md). Go sources live in `apps/server`;
+the web app lives in `apps/web`.
 
 ## Security
 
-Credentials are encrypted at rest. GET APIs do not return secrets. See
-[SECURITY.md](SECURITY.md).
+Credentials are encrypted at rest (AES-256-GCM); GET APIs never return secrets.
+See [SECURITY.md](SECURITY.md).
 
 Report vulnerabilities privately to [contact@skyrekon.com](mailto:contact@skyrekon.com).
 Do not attach keys or passwords to issues.
@@ -326,66 +239,60 @@ ServerUI is open source under the Apache License 2.0.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — setup, branch names, commits, PRs
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - Issues: bug and feature templates under `.github/ISSUE_TEMPLATE/`
-- CI: `.github/workflows/ci.yml` runs format, lint, tests, build, and a Docker image build
-
-Local Git hooks (`make hooks`) block commits when format, lint, or tests fail. Hooks
-are optional local safeguards; CI is the gate.
-
-There is a tag-driven desktop release workflow (`.github/workflows/desktop-release.yml`).
-See [docs/releases.md](docs/releases.md).
+- CI (`.github/workflows/ci.yml`) runs format, lint, tests, build, and a Docker
+  image build; desktop releases are tag-driven
+  (`.github/workflows/desktop-release.yml`)
 
 ## Roadmap
 
-Planned, not available:
+Delivered: desktop packaging matrix (macOS arm64+x64, Windows x64, Linux x64)
++ release CI, local SQLite + OS keychain storage, one-line Docker installer.
 
-- Code signing / notarization for all desktop channels (secrets-dependent)
-- Broader installer runtime verification matrix
-- ServerUI CLI
-- Optional host agent
-- In-browser editor
-- Application, domain, and database management
-
-Delivered / in tree:
-
-- OS keychain credential storage for desktop
-- Local SQLite for packaged/default desktop (Postgres remains for web)
-- Desktop packaging matrix (macOS arm64+x64, Windows x64, Linux x64) + release CI
-- Settings (About, runtime, desktop updates UI)
+Planned: code signing / notarization (secrets-dependent), prebuilt GHCR images
+for instant installs, ServerUI CLI, optional host agent, in-browser editor,
+application / domain / database management.
 
 ## FAQ
 
-**Does the browser SSH to my VPS?**  
+**Does the browser SSH to my VPS?**
 No. The Go server does.
 
-**Can I add many servers?**  
+**Can I add many servers?**
 Yes. Each has its own stored config, encrypted secret, and SSH connection.
 
-**Are Applications / Domains / Databases real?**  
+**One-line install vs `make start`?**
+Same stack. The installer is for users who just want it running (Docker only);
+`make start` is for contributors working from a clone.
+
+**How do I update / uninstall the one-line install?**
+Re-run the installer with the same `--dir` to update. Stop with
+`./install.sh --uninstall` (DB volume is kept; `docker volume rm
+serverui-postgres-data` wipes it).
+
+**Are Applications / Domains / Databases real?**
 Not yet. Those windows are Coming Soon placeholders.
 
-**Is there a CLI or agent?**  
-No. Makefile targets for them were removed because the code is not in this repository.
+**Is there a CLI or agent?**
+Not yet — both are on the roadmap.
 
 ## Current limitations
 
 - Not a production-hardened multi-tenant SaaS. Treat it as a self-hosted control panel.
+- No user login, SSO, or RBAC for the ServerUI app itself.
 - Passphrase-protected private keys are rejected with an explicit error.
 - Host key verification accepts any remote host key (TOFU / pinning is not implemented).
-- There is no user login, SSO, or RBAC for the ServerUI app itself.
-- Editor, Applications, Domains, Databases, and Settings are not implemented.
-- CLI and agent are not implemented.
+- Editor, Applications, Domains, Databases, CLI, and agent are not implemented.
 - Archive extraction needs `tar` (plus `gzip` / `bzip2` / `xz`), Info-ZIP `unzip`, or
   `7z` on the server. Password-protected archives, `.rar`, and single compressed
   files such as `.gz` are not supported.
-- Desktop app: Tauri shell with release installers; code signing / notarization
-  depend on CI secrets and are not claimed complete until configured and verified.
+- Desktop code signing / notarization depend on CI secrets and are not claimed
+  complete until configured and verified.
 - Official GitHub Release tags publish when maintainers cut `vX.Y.Z`.
 
 ## Contact
 
-[contact@skyrekon.com](mailto:contact@skyrekon.com)
-
-Use this address for security reports, contributor questions, and any other contact.
+[contact@skyrekon.com](mailto:contact@skyrekon.com) — security reports,
+contributor questions, and any other contact.
 
 ## License
 

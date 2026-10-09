@@ -20,7 +20,7 @@ Pick the path that fits you:
 
 | Path | Command | Needs |
 | ---- | ------- | ----- |
-| **Self-host (one line)** | `curl -fsSL https://raw.githubusercontent.com/Real-Yash/serverui/main/install.sh \| bash` | Docker only |
+| **Self-host (one line)** | `curl -fsSL https://raw.githubusercontent.com/Real-Yash/serverui/main/install.sh \| bash` | Docker + bash/curl/git (Linux/macOS; Windows via WSL2/Git Bash) |
 | **Desktop app** | Download from [GitHub Releases](https://github.com/rakhechashubham/serverui/releases) | Nothing else |
 | **From source** | `git clone` + `make start` (below) | Docker, Node 22, Go 1.26, Make |
 

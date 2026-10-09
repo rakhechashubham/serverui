@@ -63,7 +63,8 @@ Examples:
   curl -fsSL .../install.sh | bash -s -- --version v0.2.0 --dir ~/.serverui
   ./install.sh --web-port 3100 --api-port 8180
 
-Requirements: curl, git, Docker 28.x + Compose v2, Docker daemon running.
+Requirements: bash, curl, git, Docker 28.x + Compose v2, Docker daemon running.
+OS: Linux and macOS fully supported; Windows via WSL2 or Git Bash + Docker Desktop.
 After install: Web http://localhost:<web-port>  API http://localhost:<api-port>/healthz
 EOF
 }
@@ -133,15 +134,17 @@ set_env_key() {
 }
 
 port_in_use() {
+  # Pure-bash TCP probe: no ss/lsof needed (works on Linux, macOS, Git Bash).
   local port="$1"
-  if command -v ss >/dev/null 2>&1; then
-    ss -ltn 2>/dev/null | grep -Eq "[:.]${port}[[:space:]]"
-  elif command -v lsof >/dev/null 2>&1; then
-    lsof -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1
-  else
-    return 1
-  fi
+  (echo > "/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1
 }
+
+case "${OSTYPE:-}" in
+  msys*|cygwin*|win32*)
+    log_warn "Windows detected: run this from Git Bash or WSL2 with Docker Desktop running."
+    log_warn "Native PowerShell/cmd is not supported (a future install.ps1 may cover it)."
+    ;;
+esac
 
 require_cmd curl
 require_cmd git
@@ -236,7 +239,7 @@ docker compose -f deploy/docker/docker-compose.yml --env-file .env up -d --build
 # --- Wait for health ---
 log_info "Waiting for the API at http://localhost:${HTTP_PORT}/healthz ..."
 ready=""
-for _ in $(seq 1 60); do
+for ((i = 0; i < 60; i++)); do
   if curl -fsS "http://127.0.0.1:${HTTP_PORT}/healthz" >/dev/null 2>&1; then
     ready="yes"
     break

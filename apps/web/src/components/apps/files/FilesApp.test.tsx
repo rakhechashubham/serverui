@@ -39,6 +39,7 @@ const {
   copyItemMock,
   moveItemMock,
   compressItemsMock,
+  createDirectoryMock,
   fetchMock,
   mocks,
 } = vi.hoisted(() => ({
@@ -47,6 +48,7 @@ const {
   copyItemMock: vi.fn(),
   moveItemMock: vi.fn(),
   compressItemsMock: vi.fn(),
+  createDirectoryMock: vi.fn(),
   fetchMock: vi.fn(),
   mocks: {
     startExtract: vi.fn(),
@@ -65,6 +67,7 @@ vi.mock("@/src/lib/api/files", async () => {
     copyItem: (...args: unknown[]) => copyItemMock(...args),
     moveItem: (...args: unknown[]) => moveItemMock(...args),
     compressItems: (...args: unknown[]) => compressItemsMock(...args),
+    createDirectory: (...args: unknown[]) => createDirectoryMock(...args),
     startExtract: (...args: unknown[]) => mocks.startExtract(...args),
     getExtractJob: (...args: unknown[]) => mocks.getExtractJob(...args),
     resolveExtract: (...args: unknown[]) => mocks.resolveExtract(...args),
@@ -608,5 +611,27 @@ describe("FilesApp Finder layout", () => {
       expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute("aria-current", "page"),
     );
     expect(screen.getByRole("heading", { name: "root" })).toBeInTheDocument();
+  });
+
+  it("keeps typing and Enter in the name field when switching dialogs, and Escape cancels (#12)", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("serverui-files-view", "list");
+    createDirectoryMock.mockResolvedValue({ status: "ok" });
+    renderApp();
+    await screen.findByText("gamma_folder");
+
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "New File" }));
+    select("gamma_folder");
+    await user.click(screen.getByRole("button", { name: "New folder" }));
+    await user.keyboard("newdir{Enter}");
+
+    await waitFor(() => expect(createDirectoryMock).toHaveBeenCalledWith("srv-1", "/newdir"));
+    expect(listFilesMock).not.toHaveBeenCalledWith("srv-1", "/home/gamma_folder");
+
+    await user.click(screen.getByRole("button", { name: "New folder" }));
+    await user.keyboard("{Escape}");
+    expect(screen.queryByText("Folder name")).not.toBeInTheDocument();
+    localStorage.removeItem("serverui-files-view");
   });
 });

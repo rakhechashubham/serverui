@@ -20,8 +20,8 @@ Pick the path that fits you:
 
 | Path | Command | Needs |
 | ---- | ------- | ----- |
-| **Self-host, Linux/macOS** | `curl -fsSL https://raw.githubusercontent.com/Real-Yash/serverui/main/install.sh \| bash` | Docker + bash/curl/git |
-| **Self-host, Windows** | `irm https://raw.githubusercontent.com/Real-Yash/serverui/main/install.ps1 \| iex` (see below) | Docker Desktop + Git |
+| **Self-host, Linux/macOS** | `curl -fsSL https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.sh \| bash` | Docker + bash/curl/git |
+| **Self-host, Windows** | `irm https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.ps1 \| iex` (see below) | Docker Desktop + Git |
 | **Desktop app** | Download from [GitHub Releases](https://github.com/rakhechashubham/serverui/releases) | Nothing else |
 | **From source** | `git clone` + `make start` (below) | Docker, Node 22, Go 1.26, Make |
 
@@ -30,7 +30,7 @@ Pick the path that fits you:
 On any machine with Docker running:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Real-Yash/serverui/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.sh | bash
 ```
 
 This clones upstream code into `~/serverui` (`main` by default — pin a stable
@@ -40,14 +40,14 @@ builds images, so allow a few minutes. Useful options:
 
 ```bash
 # Pin a release, custom directory or ports
-curl -fsSL https://raw.githubusercontent.com/Real-Yash/serverui/main/install.sh | bash -s -- --version v0.2.0 --dir ~/.serverui
+curl -fsSL https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.sh | bash -s -- --version v0.2.0 --dir ~/.serverui
 ./install.sh --help       # all flags: --web-port, --api-port, --yes, --uninstall
 ```
 
 The installer pulls upstream releases by default. To install from a fork instead:
 
 ```bash
-SERVERUI_REPO_URL=https://github.com/Real-Yash/serverui.git ./install.sh
+SERVERUI_REPO_URL=https://github.com/<your-username>/serverui.git ./install.sh
 ```
 
 ### One-line self-host on Windows
@@ -56,13 +56,13 @@ Native PowerShell (5.1+), no WSL or Git Bash needed — Docker Desktop must be r
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force
-& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/Real-Yash/serverui/main/install.ps1)))
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.ps1)))
 ```
 
 With options:
 
 ```powershell
-& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/Real-Yash/serverui/main/install.ps1))) -Version v0.2.0 -WebPort 3100 -ApiPort 8180
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.ps1))) -Version v0.2.0 -WebPort 3100 -ApiPort 8180
 ```
 
 `install.ps1` mirrors `install.sh` (`-Version`, `-Dir`, `-WebPort`, `-ApiPort`,

@@ -13,11 +13,11 @@
 
 .EXAMPLE
   # One-liner (fetch + run):
-  & ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/Real-Yash/serverui/main/install.ps1)))
+  & ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.ps1)))
 
 .EXAMPLE
   # One-liner with options:
-  & ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/Real-Yash/serverui/main/install.ps1))) -Version v0.2.0 -Dir "$env:USERPROFILE\serverui"
+  & ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.ps1))) -Version v0.2.0 -Dir "$env:USERPROFILE\serverui"
 
 .EXAMPLE
   # Downloaded file:
@@ -27,7 +27,8 @@
 param(
   [string]$Version = $(if ($env:SERVERUI_VERSION) { $env:SERVERUI_VERSION } else { 'main' }),
 # NOTE: $HOME does not exist on Windows PowerShell 5.1, so prefer USERPROFILE.
-[string]$Dir = $(if ($env:SERVERUI_DIR) { $env:SERVERUI_DIR } else { if ($env:USERPROFILE) { Join-Path $env:USERPROFILE 'serverui' } else { Join-Path $HOME 'serverui' } }),
+# [Environment]::GetFolderPath avoids a StrictMode error from referencing $HOME on 5.1.
+[string]$Dir = $(if ($env:SERVERUI_DIR) { $env:SERVERUI_DIR } else { if ($env:USERPROFILE) { Join-Path $env:USERPROFILE 'serverui' } else { Join-Path ([Environment]::GetFolderPath('UserProfile')) 'serverui' } }),
   [int]$WebPort = $(if ($env:WEB_PORT) { [int]$env:WEB_PORT } else { 3000 }),
   [int]$ApiPort = $(if ($env:HTTP_PORT) { [int]$env:HTTP_PORT } else { 8080 }),
   [switch]$Yes,
@@ -39,12 +40,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # $HOME is missing on Windows PowerShell 5.1; USERPROFILE is always set there.
-$HomeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
+# GetFolderPath keeps this StrictMode-safe (no $HOME reference).
+$HomeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { [Environment]::GetFolderPath('UserProfile') }
 
 $RepoUrl = $(if ($env:SERVERUI_REPO_URL) { $env:SERVERUI_REPO_URL } else { 'https://github.com/rakhechashubham/serverui.git' })
-# NOTE: the default above is the upstream repo (stable tags for end users).
-# This script itself is currently fetched from a fork's raw URL until it is
-# merged upstream — set SERVERUI_REPO_URL to install from a fork.
+# Set SERVERUI_REPO_URL to install from a fork instead of upstream.
 
 function Write-Info($Message) { Write-Host "[serverui] $Message" -ForegroundColor Green }
 function Write-Warn($Message) { Write-Host "[serverui] WARNING: $Message" -ForegroundColor Yellow }
@@ -57,7 +57,7 @@ ServerUI installer for Windows (Docker Compose self-host)
 Usage: install.ps1 [-Version <ref>] [-Dir <path>] [-WebPort <port>] [-ApiPort <port>] [-Yes] [-Uninstall] [-Help]
 
   -Version <ref>   Git tag/branch to install (default: main, e.g. v0.2.0)
-  -Dir <path>      Install directory (default: $HOME\serverui)
+  -Dir <path>      Install directory (default: %USERPROFILE%\serverui)
   -WebPort <port>  Host port for the web UI (default: 3000)
   -ApiPort <port>  Host port for the Go API (default: 8080)
   -Yes             Skip the confirmation prompt for non-empty dirs
@@ -65,8 +65,8 @@ Usage: install.ps1 [-Version <ref>] [-Dir <path>] [-WebPort <port>] [-ApiPort <p
   -Help            Show this help and exit
 
 One-liners (run: Set-ExecutionPolicy Bypass -Scope Process -Force):
-  & ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/Real-Yash/serverui/main/install.ps1)))
-  & ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/Real-Yash/serverui/main/install.ps1))) -Version v0.2.0
+  & ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.ps1)))
+  & ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.ps1))) -Version v0.2.0
 
 Requirements: Git, Docker Desktop (running) with Compose v2.
 After install: Web http://localhost:<web-port>  API http://localhost:<api-port>/healthz
@@ -105,9 +105,10 @@ function New-Password {
 
 function Set-EnvKey($File, $Key, $Value) {
   # Replace a KEY=... line or append it. Values we generate are hex/alphanumeric.
+  # \r? consumes a CRLF carriage return so replaced lines never keep a stray CR.
   $content = [IO.File]::ReadAllText($File)
   if ($content -match "(?m)^$Key=") {
-    $content = $content -replace "(?m)^$Key=.*$", "$Key=$Value"
+    $content = $content -replace "(?m)^$Key=.*\r?$", "$Key=$Value"
   }
   else {
     if (-not $content.EndsWith("`n")) { $content += "`n" }
@@ -140,7 +141,8 @@ if ($Help) { Show-Usage; return }
 
 # Expand a leading ~ in -Dir.
 if (($Dir -eq '~') -or ($Dir.StartsWith('~/')) -or ($Dir.StartsWith('~\'))) {
-  $Dir = Join-Path $HomeDir ($Dir.Substring(1).TrimStart('/\'))
+  # Explicit char array: TrimStart(string) binds unreliably on Windows PowerShell 5.1.
+  $Dir = Join-Path $HomeDir ($Dir.Substring(1).TrimStart('/', '\'))
 }
 
 foreach ($cmd in @('git', 'docker')) {
@@ -247,7 +249,8 @@ if ($envContent -match '(?m)^SERVERUI_CREDENTIAL_ENCRYPTION_KEY=\s*$') {
 }
 
 $envContent = [IO.File]::ReadAllText('.env')
-if ($envContent -match '(?m)^POSTGRES_PASSWORD=example_password$') {
+# \r? tolerates CRLF checkouts on Windows (git core.autocrlf).
+if ($envContent -match '(?m)^POSTGRES_PASSWORD=example_password\r?$') {
   Set-EnvKey '.env' 'POSTGRES_PASSWORD' (New-Password)
   Write-Info 'Generated a random POSTGRES_PASSWORD in .env (was example default)'
 }

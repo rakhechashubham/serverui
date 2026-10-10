@@ -3,8 +3,8 @@
 # ServerUI one-line installer (self-hosted web UI via Docker Compose).
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/Real-Yash/serverui/main/install.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/Real-Yash/serverui/main/install.sh | bash -s -- --version v0.2.0 --dir ~/.serverui
+#   curl -fsSL https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.sh | bash -s -- --version v0.2.0 --dir ~/.serverui
 #
 # (https://install.serverui.dev will serve this same file once DNS is live.)
 #
@@ -18,9 +18,7 @@
 set -euo pipefail
 
 REPO_URL="${SERVERUI_REPO_URL:-https://github.com/rakhechashubham/serverui.git}"
-# NOTE: the default above is the upstream repo (stable tags for end users).
-# This script itself is currently fetched from a fork's raw URL until it is
-# merged upstream — override with SERVERUI_REPO_URL to install from a fork.
+# Override with SERVERUI_REPO_URL to install from a fork.
 VERSION="${SERVERUI_VERSION:-main}"
 INSTALL_DIR="${SERVERUI_DIR:-$HOME/serverui}"
 WEB_PORT="${WEB_PORT:-3000}"
@@ -59,7 +57,7 @@ Options:
       --uninstall       Stop the stack (docker compose down) and exit
 
 Examples:
-  curl -fsSL https://raw.githubusercontent.com/Real-Yash/serverui/main/install.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.sh | bash
   curl -fsSL .../install.sh | bash -s -- --version v0.2.0 --dir ~/.serverui
   ./install.sh --web-port 3100 --api-port 8180
 
@@ -135,6 +133,8 @@ gen_password() {
 
 set_env_key() {
   # set_env_key FILE KEY VALUE — replace KEY=... line or append it.
+  # The sed pattern consumes a trailing CR too, so values stay CR-free on
+  # CRLF checkouts (replaced lines become LF; Compose accepts mixed endings).
   local file="$1" key="$2" value="$3"
   if grep -Eq "^${key}=" "$file"; then
     sed -i.bak "s|^${key}=.*|${key}=${value}|" "$file" && rm -f "${file}.bak"
@@ -239,7 +239,7 @@ if grep -Eq '^SERVERUI_CREDENTIAL_ENCRYPTION_KEY=[[:space:]]*$' .env; then
   log_info "Generated SERVERUI_CREDENTIAL_ENCRYPTION_KEY in .env"
 fi
 
-if grep -Eq '^POSTGRES_PASSWORD=example_password$' .env; then
+if grep -Eq '^POSTGRES_PASSWORD=example_password[[:space:]]*$' .env; then
   pw="$(gen_password)"
   set_env_key .env POSTGRES_PASSWORD "$pw"
   log_info "Generated a random POSTGRES_PASSWORD in .env (was example default)"
@@ -292,7 +292,7 @@ ${GREEN}ServerUI is running.${NC}
   API:    http://localhost:${HTTP_PORT}/healthz
 
   Install dir: ${INSTALL_DIR}  (version: ${VERSION})
-  Update:      curl -fsSL https://raw.githubusercontent.com/Real-Yash/serverui/main/install.sh | bash -s -- --dir ${INSTALL_DIR}
+  Update:      curl -fsSL https://raw.githubusercontent.com/rakhechashubham/serverui/main/install.sh | bash -s -- --dir ${INSTALL_DIR}
   Logs:        docker compose -f deploy/docker/docker-compose.yml --env-file .env logs --tail=100
   Stop:        docker compose -f deploy/docker/docker-compose.yml --env-file .env down
 

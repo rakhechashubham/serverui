@@ -190,6 +190,7 @@ export type ConnectionTestResult = {
   ok: boolean;
   latencyMs: number;
   error?: string;
+  hostKeyFingerprint?: string;
   server: ServerInfo;
 };
 
@@ -240,6 +241,14 @@ export function deleteServer(id: string) {
 export function testServerConnection(id: string) {
   return apiRequest<ConnectionTestResult>(`/api/servers/${id}/test-connection`, {
     method: "POST",
+    timeoutMs: 25000,
+  });
+}
+
+export function trustServerHostKey(id: string, fingerprint: string) {
+  return apiRequest<ConnectionTestResult>(`/api/servers/${id}/trust-host-key`, {
+    method: "POST",
+    body: JSON.stringify({ fingerprint }),
     timeoutMs: 25000,
   });
 }

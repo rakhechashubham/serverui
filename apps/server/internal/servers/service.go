@@ -4,9 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
+	"net"
+	"strings"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	"serverui/server/internal/crypto"
 	sshx "serverui/server/internal/ssh"
@@ -24,7 +29,9 @@ type Service struct {
 type TestResult struct {
 	OK      bool   `json:"ok"`
 	Latency int64  `json:"latencyMs"`
+	Code    string `json:"code,omitempty"`
 	Error   string `json:"error,omitempty"`
+	HostKey string `json:"hostKeyFingerprint,omitempty"`
 	Server  Public `json:"server"`
 }
 
@@ -132,6 +139,11 @@ func (s *Service) Update(ctx context.Context, id string, input Input) (Public, e
 		return Public{}, err
 	}
 
+	if input.Host != existing.Host || input.Port != existing.Port {
+		if err := s.store.SetHostKey(ctx, existing.ID, ""); err != nil {
+			return Public{}, err
+		}
+	}
 	existing.Name = input.Name
 	existing.Host = input.Host
 	existing.Port = input.Port
@@ -252,12 +264,19 @@ func (s *Service) Test(ctx context.Context, id string) (TestResult, error) {
 		rec.UpdatedAt = time.Now().UTC()
 		_ = s.store.Update(ctx, rec)
 		log.Printf("Server connection test failed server=%s", rec.Name)
-		return TestResult{
+		code, message := sshx.ClassifyError(err)
+		result := TestResult{
 			OK:      false,
 			Latency: latency.Milliseconds(),
-			Error:   rec.LastError,
+			Code:    code,
+			Error:   message,
 			Server:  s.public(rec),
-		}, nil
+		}
+		var mismatch *sshx.HostKeyMismatchError
+		if errors.As(err, &mismatch) {
+			result.HostKey = mismatch.Presented
+		}
+		return result, nil
 	}
 	now := time.Now().UTC()
 	rec.Status = StatusOnline
@@ -273,6 +292,37 @@ func (s *Service) Test(ctx context.Context, id string) (TestResult, error) {
 	}, nil
 }
 
+func (s *Service) TrustHostKey(ctx context.Context, id, fingerprint string) (TestResult, error) {
+	if !strings.HasPrefix(fingerprint, "SHA256:") {
+		return TestResult{}, fmt.Errorf("invalid host key fingerprint")
+	}
+	if err := s.store.SetHostKey(ctx, id, fingerprint); err != nil {
+		return TestResult{}, err
+	}
+	log.Printf("server.host_key_trusted id=%s fingerprint=%s", id, fingerprint)
+	s.pool.Forget(id)
+	return s.Test(ctx, id)
+}
+
+func (s *Service) hostKeyCallback(id string, pin bool) ssh.HostKeyCallback {
+	return func(_ string, _ net.Addr, key ssh.PublicKey) error {
+		ctx := context.Background()
+		presented := ssh.FingerprintSHA256(key)
+		trusted, err := s.store.GetHostKey(ctx, id)
+		switch {
+		case err != nil:
+			return err
+		case trusted == "" && pin:
+			log.Printf("server.host_key_pinned id=%s fingerprint=%s", id, presented)
+			return s.store.SetHostKey(ctx, id, presented)
+		case trusted == "" || trusted == presented:
+			return nil
+		}
+		log.Printf("server.host_key_mismatch id=%s trusted=%s presented=%s", id, trusted, presented)
+		return &sshx.HostKeyMismatchError{Presented: presented}
+	}
+}
+
 func (s *Service) loadAuth(id string) (sshx.Config, sshx.AuthMethod, error) {
 	ctx := context.Background()
 	rec, err := s.store.Get(ctx, id)
@@ -284,9 +334,10 @@ func (s *Service) loadAuth(id string) (sshx.Config, sshx.AuthMethod, error) {
 		return sshx.Config{}, nil, err
 	}
 	cfg := sshx.Config{
-		Host:     rec.Host,
-		Port:     rec.Port,
-		Username: rec.Username,
+		Host:            rec.Host,
+		Port:            rec.Port,
+		Username:        rec.Username,
+		HostKeyCallback: s.hostKeyCallback(rec.ID, true),
 	}
 	return cfg, auth, nil
 }
@@ -325,7 +376,7 @@ func (s *Service) secret(input Input, required bool) (string, error) {
 }
 
 func (s *Service) testAndUpdate(ctx context.Context, rec Record, secret string) (Record, error) {
-	cfg := sshx.Config{Host: rec.Host, Port: rec.Port, Username: rec.Username}
+	cfg := sshx.Config{Host: rec.Host, Port: rec.Port, Username: rec.Username, HostKeyCallback: s.hostKeyCallback(rec.ID, true)}
 	var auth sshx.AuthMethod
 	var err error
 	if secret != "" {
@@ -357,9 +408,8 @@ func (s *Service) testAndUpdate(ctx context.Context, rec Record, secret string) 
 }
 
 func (s *Service) public(rec Record) Public {
-	if s.pool != nil && s.pool.IsConnected(rec.ID) {
+	if rec.LastError == "" && s.pool != nil && s.pool.IsConnected(rec.ID) {
 		rec.Status = StatusOnline
-		rec.LastError = ""
 	}
 	return rec.Public()
 }
@@ -379,10 +429,14 @@ func statusFromErr(err error) string {
 	if err == nil {
 		return StatusOnline
 	}
-	if code, _ := sshx.ClassifyError(err); code == sshx.CodeAuthFailed {
+	switch code, _ := sshx.ClassifyError(err); code {
+	case sshx.CodeAuthFailed, sshx.CodeInvalidPrivateKey, sshx.CodePassphraseRequired:
 		return StatusAuthenticationFailed
+	case sshx.CodeHostKeyChanged:
+		return StatusHostKeyChanged
+	default:
+		return StatusOffline
 	}
-	return StatusOffline
 }
 
 func newID() string {

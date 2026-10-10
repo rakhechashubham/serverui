@@ -1,6 +1,10 @@
 package sshx
 
-import "strings"
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
 
 // Error codes sent to API clients with connection test results.
 const (
@@ -11,6 +15,7 @@ const (
 	CodeConnectionReset    = "connection_reset"
 	CodeNotSSH             = "not_ssh"
 	CodeAuthFailed         = "auth_failed"
+	CodeHostKeyChanged     = "host_key_changed"
 	CodeInvalidPrivateKey  = "invalid_private_key"
 	CodePassphraseRequired = "passphrase_required"
 	CodeSSHFailed          = "ssh_failed"
@@ -20,6 +25,10 @@ const (
 func ClassifyError(err error) (code, message string) {
 	if err == nil {
 		return "", ""
+	}
+	var mismatch *HostKeyMismatchError
+	if errors.As(err, &mismatch) {
+		return CodeHostKeyChanged, "Host key changed since it was trusted, so nothing was sent. Review the key before connecting."
 	}
 	msg := strings.ToLower(err.Error())
 	switch {
@@ -33,7 +42,7 @@ func ClassifyError(err error) (code, message string) {
 	case strings.Contains(msg, "unable to authenticate"),
 		strings.Contains(msg, "no supported methods remain"),
 		strings.Contains(msg, "permission denied"):
-		return CodeAuthFailed, "Authentication failed. Check the username and password or private key."
+		return classifyAuthFailure(msg)
 	case strings.Contains(msg, "no such host"),
 		strings.Contains(msg, "server misbehaving"),
 		strings.Contains(msg, "lookup "):
@@ -59,6 +68,21 @@ func ClassifyError(err error) (code, message string) {
 	}
 }
 
+func classifyAuthFailure(msg string) (code, message string) {
+	_, rest, found := strings.Cut(msg, "attempted methods [")
+	methods, _, _ := strings.Cut(rest, "]")
+	switch {
+	case !found:
+		return CodeAuthFailed, "Authentication failed. Check the username and password or private key."
+	case strings.Contains(methods, "password"):
+		return CodeAuthFailed, "Authentication failed: the server rejected the username or password."
+	case strings.Contains(methods, "publickey"):
+		return CodeAuthFailed, "Authentication failed: the server did not accept this private key for this user. Check the username and that the public key is in authorized_keys."
+	default:
+		return CodeAuthFailed, "Authentication failed: the server does not allow this sign-in method for this user. Try the other authentication type or check the server's sshd_config."
+	}
+}
+
 // PublicError is the short API error text, derived from ClassifyError.
 func PublicError(err error) string {
 	if err == nil {
@@ -71,9 +95,19 @@ func PublicError(err error) string {
 		return "invalid private key"
 	case CodeAuthFailed:
 		return "authentication failed"
+	case CodeHostKeyChanged:
+		return "host key changed"
 	case CodeTimeout, CodeConnectionRefused, CodeUnreachable:
 		return "unable to connect to server"
 	default:
 		return "ssh connection failed"
 	}
+}
+
+type HostKeyMismatchError struct {
+	Presented string
+}
+
+func (e *HostKeyMismatchError) Error() string {
+	return fmt.Sprintf("host key mismatch: presented %s", e.Presented)
 }

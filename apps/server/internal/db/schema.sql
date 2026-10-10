@@ -29,3 +29,8 @@ CREATE TABLE IF NOT EXISTS server_credentials (
 );
 
 CREATE INDEX IF NOT EXISTS server_credentials_server_id_idx ON server_credentials (server_id);
+
+CREATE TABLE IF NOT EXISTS server_host_keys (
+    server_id TEXT PRIMARY KEY REFERENCES servers(id) ON DELETE CASCADE,
+    fingerprint TEXT NOT NULL
+);

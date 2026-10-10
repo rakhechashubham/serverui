@@ -1,7 +1,7 @@
 "use client";
 
 import type { Server } from "@/src/lib/servers";
-import { ServerStatus } from "@/src/components/server-selection/ServerStatus";
+import { ServerStatus, statusDot } from "@/src/components/server-selection/ServerStatus";
 
 export function ServerCard({
   server,
@@ -11,6 +11,7 @@ export function ServerCard({
   onTest,
   onEdit,
   onDelete,
+  onReviewKey,
 }: {
   server: Server;
   testing?: boolean;
@@ -19,20 +20,13 @@ export function ServerCard({
   onTest: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onReviewKey?: () => void;
 }) {
   return (
     <div className="sui-card animate-card-in rounded-[22px] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
       <div className="relative flex min-h-[118px] flex-col items-start text-left">
         <span
-          className={`absolute right-0 top-0 size-2 rounded-full ${
-            server.status === "online"
-              ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.85)]"
-              : server.status === "connecting"
-                ? "bg-amber-300"
-                : server.status === "authentication_failed"
-                  ? "bg-red-400"
-                  : "bg-zinc-400"
-          }`}
+          className={`absolute right-0 top-0 size-2 rounded-full ${statusDot(server.status, server.error, testing)}`}
           aria-hidden
         />
         <p className="pr-6 text-[17px] font-semibold tracking-tight text-white">{server.name}</p>
@@ -46,24 +40,38 @@ export function ServerCard({
           {server.sshPort && server.sshPort !== 22 ? `:${server.sshPort}` : ""}
         </p>
         <div className="mt-auto pt-5">
-          <ServerStatus status={server.status} />
+          <ServerStatus status={server.status} error={server.error} checking={testing} />
         </div>
       </div>
 
       {testMessage ? (
-        <p className="mt-3 text-[12px] text-white/70" role="status">
+        <p
+          className="mt-3 line-clamp-2 text-[12px] text-white/70"
+          role="status"
+          title={testMessage}
+        >
           {testMessage}
         </p>
       ) : null}
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onConnect}
-          className="rounded-full bg-white px-3 py-1.5 text-[12px] font-semibold text-zinc-900 transition hover:bg-white/90"
-        >
-          Connect
-        </button>
+        {onReviewKey ? (
+          <button
+            type="button"
+            onClick={onReviewKey}
+            className="rounded-full bg-red-400 px-3 py-1.5 text-[12px] font-semibold text-zinc-950 transition hover:bg-red-300"
+          >
+            Review Key
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onConnect}
+            className="rounded-full bg-white px-3 py-1.5 text-[12px] font-semibold text-zinc-900 transition hover:bg-white/90"
+          >
+            Connect
+          </button>
+        )}
         <button
           type="button"
           onClick={onTest}

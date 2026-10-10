@@ -41,6 +41,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/servers/{id}", s.deleteServer)
 	mux.HandleFunc("POST /api/servers/test-connection", s.testServerDraft)
 	mux.HandleFunc("POST /api/servers/{id}/test-connection", s.testServer)
+	mux.HandleFunc("POST /api/servers/{id}/trust-host-key", s.trustHostKey)
 	mux.HandleFunc("POST /api/servers/{id}/connect", s.connectServer)
 	mux.HandleFunc("POST /api/servers/{id}/disconnect", s.disconnectServer)
 	mux.HandleFunc("GET /api/servers/{id}/status", s.serverStatus)
@@ -188,6 +189,22 @@ func (s *Server) deleteServer(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) testServer(w http.ResponseWriter, r *http.Request) {
 	result, err := s.servers.Test(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) trustHostKey(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Fingerprint string `json:"fingerprint"`
+	}
+	if err := decodeJSON(w, r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return
+	}
+	result, err := s.servers.TrustHostKey(r.Context(), r.PathValue("id"), body.Fingerprint)
 	if err != nil {
 		writeError(w, err)
 		return

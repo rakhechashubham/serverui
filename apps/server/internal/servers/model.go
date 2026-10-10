@@ -10,6 +10,7 @@ const (
 	StatusOffline              = "offline"
 	StatusConnecting           = "connecting"
 	StatusAuthenticationFailed = "authentication_failed"
+	StatusHostKeyChanged       = "host_key_changed"
 	StatusUnknown              = "unknown"
 )
 

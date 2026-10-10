@@ -23,6 +23,8 @@ type Store interface {
 	Delete(ctx context.Context, id string) error
 	GetCredential(ctx context.Context, serverID string) (Credential, error)
 	UpsertCredential(ctx context.Context, cred Credential) error
+	GetHostKey(ctx context.Context, serverID string) (string, error)
+	SetHostKey(ctx context.Context, serverID, fingerprint string) error
 }
 
 type SQLStore struct {
@@ -182,6 +184,23 @@ func (s *SQLStore) UpsertCredential(ctx context.Context, cred Credential) error 
 			updated_at=EXCLUDED.updated_at
 	`), cred.ID, cred.ServerID, cred.AuthType, cred.EncryptedSecret,
 		s.timeArg(cred.CreatedAt), s.timeArg(cred.UpdatedAt))
+	return err
+}
+
+func (s *SQLStore) GetHostKey(ctx context.Context, serverID string) (string, error) {
+	var fingerprint string
+	err := s.db.QueryRowContext(ctx, s.q(`SELECT fingerprint FROM server_host_keys WHERE server_id=$1`), serverID).Scan(&fingerprint)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return fingerprint, err
+}
+
+func (s *SQLStore) SetHostKey(ctx context.Context, serverID, fingerprint string) error {
+	_, err := s.db.ExecContext(ctx, s.q(`
+		INSERT INTO server_host_keys (server_id, fingerprint) VALUES ($1,$2)
+		ON CONFLICT (server_id) DO UPDATE SET fingerprint=EXCLUDED.fingerprint
+	`), serverID, fingerprint)
 	return err
 }
 

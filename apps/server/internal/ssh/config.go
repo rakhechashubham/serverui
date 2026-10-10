@@ -5,13 +5,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"golang.org/x/crypto/ssh"
 )
 
 type Config struct {
-	Host     string
-	Port     int
-	Username string
-	Password string
+	Host            string
+	Port            int
+	Username        string
+	Password        string
+	HostKeyCallback ssh.HostKeyCallback
 }
 
 // LoadConfig reads a single-host SSH target from process environment.

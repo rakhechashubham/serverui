@@ -17,6 +17,7 @@ import {
   disconnectServer as disconnectServerApi,
   listServers,
   testServerConnection,
+  trustServerHostKey,
   updateServer as updateServerApi,
   type ConnectionTestResult,
   type ServerInfo,
@@ -35,7 +36,7 @@ type SessionContextValue = {
   addServer: (input: NewServerInput) => Promise<Server>;
   updateServer: (id: string, input: NewServerInput) => Promise<Server>;
   deleteServer: (id: string) => Promise<void>;
-  testConnection: (id: string) => Promise<ConnectionTestResult>;
+  testConnection: (id: string, trustHostKey?: string) => Promise<ConnectionTestResult>;
   completeBoot: () => void;
   logOut: () => void;
   completeLogOut: () => void;
@@ -53,6 +54,7 @@ function asStatus(value: string | undefined): ServerStatus {
     case "connecting":
     case "error":
     case "authentication_failed":
+    case "host_key_changed":
     case "unknown":
       return value;
     default:
@@ -178,8 +180,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [selectedServer?.id],
   );
 
-  const testConnection = useCallback(async (id: string) => {
-    const result = await testServerConnection(id);
+  const testConnection = useCallback(async (id: string, trustHostKey?: string) => {
+    const result = await (trustHostKey
+      ? trustServerHostKey(id, trustHostKey)
+      : testServerConnection(id));
     const next = toSessionServer(result.server);
     setServers((current) => current.map((item) => (item.id === id ? next : item)));
     return result;

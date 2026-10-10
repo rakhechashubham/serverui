@@ -32,6 +32,8 @@ export function ServerSelection() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testMessage, setTestMessage] = useState<Record<string, string>>({});
+  const [hostKeys, setHostKeys] = useState<Record<string, string>>({});
+  const [trusting, setTrusting] = useState<Server | null>(null);
   const didRefresh = useRef(false);
 
   useEffect(() => {
@@ -91,15 +93,19 @@ export function ServerSelection() {
     }
   }
 
-  async function onTest(id: string) {
+  async function onTest(id: string, trustHostKey?: string) {
     setTestingId(id);
-    setTestMessage((current) => ({ ...current, [id]: "Connecting…" }));
+    setTestMessage((current) => ({ ...current, [id]: "Testing connection…" }));
     try {
-      const result = await testConnection(id);
+      const result = await testConnection(id, trustHostKey);
+      setHostKeys((current) => ({ ...current, [id]: result.hostKeyFingerprint ?? "" }));
       setTestMessage((current) => ({
         ...current,
-        [id]: formatConnectionTestMessage(result.ok, result.latencyMs, result.error),
+        [id]: result.ok
+          ? formatConnectionTestMessage(true, result.latencyMs)
+          : result.error || formatConnectionTestMessage(false),
       }));
+      return result;
     } catch (err) {
       setTestMessage((current) => ({
         ...current,
@@ -111,6 +117,12 @@ export function ServerSelection() {
       }));
     } finally {
       setTestingId(null);
+    }
+  }
+
+  async function onReviewKey(server: Server) {
+    if (hostKeys[server.id] || (await onTest(server.id))?.hostKeyFingerprint) {
+      setTrusting(server);
     }
   }
 
@@ -206,6 +218,9 @@ export function ServerSelection() {
                 setDeleteError(null);
                 setDeleting(server);
               }}
+              onReviewKey={
+                server.status === "host_key_changed" ? () => void onReviewKey(server) : undefined
+              }
             />
           ))}
 
@@ -247,9 +262,24 @@ export function ServerSelection() {
         />
       ) : null}
 
+      {trusting ? (
+        <ConfirmModal
+          title={`Trust the new host key for “${trusting.name}”?`}
+          message={`The server now presents ${hostKeys[trusting.id]}. Trust it only if you know why the key changed, for example after reinstalling the server. Otherwise someone may be intercepting the connection.`}
+          confirmLabel="Trust Key"
+          onClose={() => setTrusting(null)}
+          onConfirm={() => {
+            setTrusting(null);
+            void onTest(trusting.id, hostKeys[trusting.id]);
+          }}
+        />
+      ) : null}
+
       {deleting ? (
-        <DeleteServerModal
-          server={deleting}
+        <ConfirmModal
+          title={`Delete “${deleting.name}”?`}
+          message="This permanently removes the server configuration and encrypted credentials from ServerUI. The remote machine is not deleted or modified."
+          confirmLabel={deleteBusy ? "Deleting…" : "Delete Server"}
           busy={deleteBusy}
           error={deleteError}
           onClose={() => setDeleting(null)}
@@ -260,16 +290,20 @@ export function ServerSelection() {
   );
 }
 
-function DeleteServerModal({
-  server,
+function ConfirmModal({
+  title,
+  message,
+  confirmLabel,
   busy,
   error,
   onClose,
   onConfirm,
 }: {
-  server: Server;
-  busy: boolean;
-  error: string | null;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  busy?: boolean;
+  error?: string | null;
   onClose: () => void;
   onConfirm: () => void;
 }) {
@@ -283,16 +317,13 @@ function DeleteServerModal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="delete-server-title"
+        aria-labelledby="confirm-title"
         className="sui-card w-full max-w-[400px] rounded-[22px] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.5)] animate-modal-in"
       >
-        <h2 id="delete-server-title" className="text-[16px] font-semibold text-white">
-          Delete “{server.name}”?
+        <h2 id="confirm-title" className="text-[16px] font-semibold text-white">
+          {title}
         </h2>
-        <p className="mt-2 text-[13px] leading-6 text-white/62">
-          This permanently removes the server configuration and encrypted credentials from ServerUI.
-          The remote machine is not deleted or modified.
-        </p>
+        <p className="mt-2 break-words text-[13px] leading-6 text-white/62">{message}</p>
         {error ? (
           <p className="mt-3 text-[12px] text-red-300" role="alert">
             {error}
@@ -312,7 +343,7 @@ function DeleteServerModal({
             disabled={busy}
             className="rounded-full bg-red-400 px-4 py-2 text-[13px] font-semibold text-zinc-950 disabled:opacity-60"
           >
-            {busy ? "Deleting…" : "Delete Server"}
+            {confirmLabel}
           </button>
         </div>
       </div>

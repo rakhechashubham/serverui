@@ -9,12 +9,14 @@ type MemoryStore struct {
 	mu    sync.Mutex
 	items map[string]Record
 	creds map[string]Credential
+	keys  map[string]string
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		items: map[string]Record{},
 		creds: map[string]Credential{},
+		keys:  map[string]string{},
 	}
 }
 
@@ -64,6 +66,7 @@ func (s *MemoryStore) Delete(_ context.Context, id string) error {
 	}
 	delete(s.items, id)
 	delete(s.creds, id)
+	delete(s.keys, id)
 	return nil
 }
 
@@ -81,5 +84,18 @@ func (s *MemoryStore) UpsertCredential(_ context.Context, cred Credential) error
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.creds[cred.ServerID] = cred
+	return nil
+}
+
+func (s *MemoryStore) GetHostKey(_ context.Context, serverID string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.keys[serverID], nil
+}
+
+func (s *MemoryStore) SetHostKey(_ context.Context, serverID, fingerprint string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.keys[serverID] = fingerprint
 	return nil
 }

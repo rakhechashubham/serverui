@@ -370,7 +370,7 @@ No. Makefile targets for them were removed because the code is not in this repos
 
 - Not a production-hardened multi-tenant SaaS. Treat it as a self-hosted control panel.
 - Passphrase-protected private keys are rejected with an explicit error.
-- Host key verification accepts any remote host key (TOFU / pinning is not implemented).
+- SSH host keys are trusted on first use: a changed host key is refused until it is trusted again from the server card.
 - There is no user login, SSO, or RBAC for the ServerUI app itself.
 - Editor, Applications, Domains, Databases, and Settings are not implemented.
 - CLI and agent are not implemented.

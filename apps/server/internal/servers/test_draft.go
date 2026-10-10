@@ -47,7 +47,11 @@ func (s *Service) TestDraft(ctx context.Context, serverID string, input Input) (
 		return failedDraft(err, 0), nil
 	}
 
-	cfg := sshx.Config{Host: input.Host, Port: input.Port, Username: input.Username}
+	trustedID := ""
+	if serverID != "" && input.Host == saved.Host && input.Port == saved.Port {
+		trustedID = saved.ID
+	}
+	cfg := sshx.Config{Host: input.Host, Port: input.Port, Username: input.Username, HostKeyCallback: s.hostKeyCallback(trustedID, false)}
 	log.Printf("server.test_draft host=%s port=%d saved_credential=%t", cfg.Host, cfg.Port, useSaved)
 	start := time.Now()
 	err = s.dial(cfg, auth)

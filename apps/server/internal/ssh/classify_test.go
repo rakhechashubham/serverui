@@ -2,6 +2,7 @@ package sshx
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -32,5 +33,19 @@ func TestClassifyError(t *testing.T) {
 	}
 	if code, message := ClassifyError(nil); code != "" || message != "" {
 		t.Fatalf("nil error classified as %q %q", code, message)
+	}
+}
+
+func TestClassifyAuthFailureNamesTheCause(t *testing.T) {
+	cases := map[string]string{
+		"ssh: handshake failed: ssh: unable to authenticate, attempted methods [none password], no supported methods remain":  "rejected the username or password",
+		"ssh: handshake failed: ssh: unable to authenticate, attempted methods [none publickey], no supported methods remain": "did not accept this private key",
+		"ssh: handshake failed: ssh: unable to authenticate, attempted methods [none], no supported methods remain":           "does not allow this sign-in method",
+		"unable to authenticate": "Check the username and password or private key",
+	}
+	for raw, want := range cases {
+		if _, message := ClassifyError(errors.New(raw)); !strings.Contains(message, want) {
+			t.Errorf("ClassifyError(%q) message = %q, want it to mention %q", raw, message, want)
+		}
 	}
 }

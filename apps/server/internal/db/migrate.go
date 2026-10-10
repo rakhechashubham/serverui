@@ -13,8 +13,8 @@ import (
 var schemaFS embed.FS
 
 // CurrentSchemaVersion is the latest migration version applied by Migrate.
-// Version 1: servers + server_credentials (+ schema_migrations bookkeeping).
-const CurrentSchemaVersion = 1
+// Version 2: servers + server_credentials + server_host_keys (+ schema_migrations bookkeeping).
+const CurrentSchemaVersion = 2
 
 // Migrate applies pending schema migrations for the active storage backend.
 // It never drops user tables or recreates the database.

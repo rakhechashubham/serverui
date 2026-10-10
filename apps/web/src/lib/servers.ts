@@ -1,5 +1,11 @@
 export type ServerStatus =
-  "online" | "offline" | "connecting" | "error" | "authentication_failed" | "unknown";
+  | "online"
+  | "offline"
+  | "connecting"
+  | "error"
+  | "authentication_failed"
+  | "host_key_changed"
+  | "unknown";
 
 export type Server = {
   id: string;

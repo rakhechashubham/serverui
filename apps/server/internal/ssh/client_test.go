@@ -18,13 +18,13 @@ func TestDialPasswordAndKey(t *testing.T) {
 	addr := startTestSSHServer(t, "deploy", password, signer.PublicKey())
 	host, port := splitAddr(t, addr)
 
-	client, err := Dial(Config{Host: host, Port: port, Username: "deploy"}, PasswordAuth{Password: password})
+	client, err := Dial(Config{Host: host, Port: port, Username: "deploy", HostKeyCallback: ssh.InsecureIgnoreHostKey()}, PasswordAuth{Password: password})
 	if err != nil {
 		t.Fatalf("password auth: %v", err)
 	}
 	_ = client.Close()
 
-	client, err = Dial(Config{Host: host, Port: port, Username: "deploy"}, PublicKeyAuth{signer: signer})
+	client, err = Dial(Config{Host: host, Port: port, Username: "deploy", HostKeyCallback: ssh.InsecureIgnoreHostKey()}, PublicKeyAuth{signer: signer})
 	if err != nil {
 		t.Fatalf("key auth: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestDialPasswordAndKey(t *testing.T) {
 func TestDialInvalidPassword(t *testing.T) {
 	addr := startTestSSHServer(t, "deploy", "correct", nil)
 	host, port := splitAddr(t, addr)
-	_, err := Dial(Config{Host: host, Port: port, Username: "deploy"}, PasswordAuth{Password: "wrong"})
+	_, err := Dial(Config{Host: host, Port: port, Username: "deploy", HostKeyCallback: ssh.InsecureIgnoreHostKey()}, PasswordAuth{Password: "wrong"})
 	if err == nil {
 		t.Fatal("expected auth failure")
 	}
@@ -44,7 +44,7 @@ func TestDialInvalidPassword(t *testing.T) {
 }
 
 func TestDialUnreachable(t *testing.T) {
-	_, err := Dial(Config{Host: "127.0.0.1", Port: 1, Username: "deploy"}, PasswordAuth{Password: "x"})
+	_, err := Dial(Config{Host: "127.0.0.1", Port: 1, Username: "deploy", HostKeyCallback: ssh.InsecureIgnoreHostKey()}, PasswordAuth{Password: "x"})
 	if err == nil {
 		t.Fatal("expected connection failure")
 	}

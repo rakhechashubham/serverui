@@ -24,14 +24,19 @@ Working in this repository:
 - Remote file manager (SFTP)
 - Archive extraction in Files (`.zip`, `.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`, `.tar.xz`, `.7z`),
   run on the server with its own `tar` / `unzip` / `7z`
+- Store: see which tools are installed on the server (px0, Claude Code, Bun, Git, Docker,
+  Node.js) and install, update, or remove the ones it manages, from a fixed catalogue.
+  See [docs/store.md](docs/store.md), including how to add an app
+- px0 in a window: the Store installs px0 (AI code review console), ServerUI starts it on the
+  server and proxies it through an SSH tunnel. Files gets "Open in px0" when it is installed
 - CPU, memory, disk, and uptime metrics from the selected server
 - Linux-inspired desktop, window manager, and server switcher
 - AES-256-GCM encryption for stored credentials
 
 Not implemented yet (UI may show Coming Soon):
 
-- In-browser code editor
-- Application, domain, and database management
+- The dock's built-in Editor
+- Domain and database management
 - ServerUI CLI
 - ServerUI agent
 
@@ -68,7 +73,8 @@ Architecture** for Web / Desktop / Source). Desktop hardening:
 [docs/desktop-storage.md](docs/desktop-storage.md). Releases and installers:
 [docs/releases.md](docs/releases.md). Product audit / manual QA:
 [docs/product-audit.md](docs/product-audit.md),
-[docs/manual-qa.md](docs/manual-qa.md).
+[docs/manual-qa.md](docs/manual-qa.md). Store and how to add an app:
+[docs/store.md](docs/store.md).
 
 ## How it works
 
@@ -96,6 +102,7 @@ serverui/
 │   ├── product-audit.md
 │   ├── manual-qa.md
 │   ├── releases.md
+│   ├── store.md
 │   └── images/
 ├── scripts/
 │   └── pre-commit
@@ -372,8 +379,17 @@ No. Makefile targets for them were removed because the code is not in this repos
 - Passphrase-protected private keys are rejected with an explicit error.
 - Host key verification accepts any remote host key (TOFU / pinning is not implemented).
 - There is no user login, SSO, or RBAC for the ServerUI app itself.
-- Editor, Applications, Domains, Databases, and Settings are not implemented.
+- The dock's Editor, Domains, and Databases are not implemented.
 - CLI and agent are not implemented.
+- Store installs run the vendors' own install scripts on the server and need `curl`. Git needs
+  root or passwordless `sudo` and apt, dnf, or apk. Docker and Node.js are detected only.
+  "Update" reinstalls the latest version; there is no "update available" indicator yet.
+- px0 has no authentication and no Unix socket option: it listens on `127.0.0.1` of the server,
+  so every local user on that server can reach it. From the browser it is reachable only
+  through ServerUI, which has no login (see above). The tunnel needs `AllowTcpForwarding` in
+  sshd. It is not supported in the desktop app yet, because an iframe cannot send the local
+  auth header. Closing the px0 window does not stop it on the server; removing it from the
+  Store does.
 - Archive extraction needs `tar` (plus `gzip` / `bzip2` / `xz`), Info-ZIP `unzip`, or
   `7z` on the server. Password-protected archives, `.rar`, and single compressed
   files such as `.gz` are not supported.

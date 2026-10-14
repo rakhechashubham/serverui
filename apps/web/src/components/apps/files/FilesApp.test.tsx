@@ -41,6 +41,7 @@ const {
   compressItemsMock,
   createDirectoryMock,
   fetchMock,
+  px0InstalledMock,
   mocks,
 } = vi.hoisted(() => ({
   listFilesMock: vi.fn(),
@@ -50,6 +51,7 @@ const {
   compressItemsMock: vi.fn(),
   createDirectoryMock: vi.fn(),
   fetchMock: vi.fn(),
+  px0InstalledMock: vi.fn<(id: string) => Promise<boolean>>(async () => false),
   mocks: {
     startExtract: vi.fn(),
     getExtractJob: vi.fn(),
@@ -97,6 +99,11 @@ vi.mock("@/src/lib/session", () => ({
 
 vi.mock("@/src/lib/api/server-context", () => ({
   useServer: () => ({ server: { username: "deploy" } }),
+}));
+
+// Files asks the store whether px0 is installed; keep that SSH detection out of these tests.
+vi.mock("@/src/lib/api/store", () => ({
+  px0Installed: (id: string) => px0InstalledMock(id),
 }));
 
 // Most tests here drive the list view (rows are <tr>); Finder icon-view tests set their own view.
@@ -633,5 +640,50 @@ describe("FilesApp Finder layout", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByText("Folder name")).not.toBeInTheDocument();
     localStorage.removeItem("serverui-files-view");
+  });
+});
+
+describe("FilesApp px0 menu", () => {
+  it("offers px0 for entries under the resolved home only, even when opened on /", async () => {
+    vi.clearAllMocks();
+    px0InstalledMock.mockResolvedValue(true);
+    const file = (path: string): FileEntry => ({
+      name: path.split("/").pop()!,
+      path,
+      type: "file",
+      size: 1,
+      mode: "-rw-r--r--",
+      modified: "2026-03-30T10:00:00Z",
+    });
+    listFilesMock.mockImplementation(async (_id: string, path: string) =>
+      path === "~"
+        ? { path: "/home/deploy", entries: [] }
+        : {
+            path: "/",
+            entries: [
+              file("/home/deploy/mine.txt"),
+              { ...file("/home/deploy/docs"), type: "dir" as const },
+              file("/etc/hosts"),
+            ],
+          },
+    );
+    renderApp();
+    await screen.findByText("mine.txt");
+
+    fireEvent.contextMenu(screen.getByText("mine.txt"));
+    expect(await screen.findByText("Open in px0")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.mouseDown(document.body);
+
+    fireEvent.contextMenu(screen.getByText("docs"));
+    await waitFor(() => expect(screen.getByText("Copy Path")).toBeInTheDocument());
+    expect(screen.queryByText("Open in px0")).not.toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.mouseDown(document.body);
+
+    fireEvent.contextMenu(screen.getByText("hosts"));
+    await waitFor(() => expect(screen.getByText("Copy Path")).toBeInTheDocument());
+    expect(screen.queryByText("Open in px0")).not.toBeInTheDocument();
+    px0InstalledMock.mockResolvedValue(false);
   });
 });

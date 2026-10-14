@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"serverui/server/internal/api"
+	"serverui/server/internal/appstore"
 	"serverui/server/internal/archive"
 	"serverui/server/internal/crypto"
 	"serverui/server/internal/db"
 	"serverui/server/internal/filesystem"
 	"serverui/server/internal/metrics"
+	"serverui/server/internal/px0"
 	"serverui/server/internal/secrets"
 	"serverui/server/internal/servers"
 	"serverui/server/internal/terminal"
@@ -56,6 +58,8 @@ func main() {
 		metrics.NewCollector(pool),
 		files,
 		archive.New(pool, files.List),
+		appstore.New(pool),
+		px0.New(pool, px0.SSHDial(pool.Ensure)),
 		terminal.New(pool),
 	).Handler()
 

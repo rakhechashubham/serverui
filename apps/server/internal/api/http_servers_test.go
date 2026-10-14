@@ -2,22 +2,32 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"serverui/server/internal/appstore"
 	"serverui/server/internal/archive"
 	"serverui/server/internal/crypto"
 	"serverui/server/internal/filesystem"
 	"serverui/server/internal/metrics"
+	"serverui/server/internal/px0"
 	"serverui/server/internal/servers"
 	sshx "serverui/server/internal/ssh"
 	"serverui/server/internal/terminal"
 )
 
 func testAPI(t *testing.T) http.Handler {
+	t.Helper()
+	return testAPIWithPx0(t, nil)
+}
+
+// testAPIWithPx0 runs px0 scripts through run instead of SSH when it is set.
+func testAPIWithPx0(t *testing.T, run px0.Runner) http.Handler {
 	t.Helper()
 	// Web/API tests expect no desktop local-auth gate.
 	t.Setenv("SERVERUI_LOCAL_AUTH_TOKEN", "")
@@ -35,7 +45,44 @@ func testAPI(t *testing.T) http.Handler {
 	})
 	pool := svc.Pool()
 	files := filesystem.New(pool)
-	return New(svc, metrics.NewCollector(pool), files, archive.New(pool, files.List), terminal.New(pool)).Handler()
+	if run == nil {
+		run = pool
+	}
+	return New(svc, metrics.NewCollector(pool), files, archive.New(pool, files.List), appstore.New(pool), px0.New(run, px0.SSHDial(pool.Ensure)), terminal.New(pool)).Handler()
+}
+
+type px0Runner []string
+
+func (r px0Runner) Stream(_ context.Context, _, _ string, onLine func(string)) ([]byte, error) {
+	for _, line := range r {
+		onLine(line)
+	}
+	return nil, errors.New("exit status 1")
+}
+
+func TestPx0RoutesAnswerConflictWhenMissingOrNotStarted(t *testing.T) {
+	handler := testAPIWithPx0(t, px0Runner{"NOT_INSTALLED"})
+	body := `{"name":"p","host":"203.0.113.10","port":22,"username":"u","authType":"password","password":"x"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/servers", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	var created struct{ ID string }
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil || created.ID == "" {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+
+	for _, c := range []struct{ method, path string }{
+		{http.MethodPost, "/api/px0/" + created.ID + "/start"},
+		{http.MethodGet, "/api/px0/" + created.ID + "/"},
+		{http.MethodGet, "/api/px0/" + created.ID},
+	} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(c.method, c.path, nil))
+		if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"error"`) {
+			t.Errorf("%s %s: got %d %s", c.method, c.path, rec.Code, rec.Body.String())
+		}
+	}
 }
 
 func TestServerCRUDHidesCredentials(t *testing.T) {

@@ -34,12 +34,13 @@ import {
 import { useWindowManager, type WindowPayload } from "@/src/components/window/window-context";
 import { addDesktopShortcut } from "@/src/lib/desktop-shortcuts";
 import { useServer } from "@/src/lib/api/server-context";
+import { px0Installed } from "@/src/lib/api/store";
 import { useSelectedServer } from "@/src/lib/session";
 import { formatSize, totalSize } from "@/src/lib/files/format";
 import { getFileViewer } from "@/src/lib/files/file-type";
 import { Breadcrumbs } from "@/src/components/apps/files/Breadcrumbs";
 import { DownloadPanel, useDownloadQueue } from "@/src/components/apps/files/DownloadQueue";
-import { FileContextMenu } from "@/src/components/apps/files/FileContextMenu";
+import { FileContextMenu, relativeToHome } from "@/src/components/apps/files/FileContextMenu";
 import { FileGrid } from "@/src/components/apps/files/FileGrid";
 import { FileList } from "@/src/components/apps/files/FileList";
 import { FileToolbar, toolbarClass, type FilesView } from "@/src/components/apps/files/FileToolbar";
@@ -156,6 +157,8 @@ export function FilesApp({ payload }: { payload?: WindowPayload }) {
   // The server resolves "~" to the user's real home (e.g. /root for root);
   // remember it so the sidebar can highlight Home.
   const [homeDir, setHomeDir] = useState<string | null>(null);
+  // "Open in px0" only exists in the menu once px0 is on this server.
+  const [px0Ready, setPx0Ready] = useState(false);
 
   async function load(nextPath: string) {
     if (!serverId) return;
@@ -181,6 +184,26 @@ export function FilesApp({ payload }: { payload?: WindowPayload }) {
   useEffect(() => {
     pathRef.current = path;
   }, [path]);
+
+  useEffect(() => {
+    if (!serverId) return;
+    let cancelled = false;
+    px0Installed(serverId)
+      .then((installed) => {
+        if (!cancelled) setPx0Ready(installed);
+        // px0 only opens paths under $HOME; resolve it without moving the window.
+        return installed ? listFiles(serverId, HOME_PATH) : null;
+      })
+      .then((home) => {
+        if (!cancelled && home) setHomeDir(home.path);
+      })
+      .catch(() => {
+        // The menu simply omits the item when the server cannot be checked.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [serverId]);
 
   useEffect(() => {
     if (!serverId) return;
@@ -704,6 +727,10 @@ export function FilesApp({ payload }: { payload?: WindowPayload }) {
         setLastSelectedPath(entry.path);
       }
     }
+    // The Store may have installed px0 since this window opened; this reads its last detection.
+    void px0Installed(serverId)
+      .then(setPx0Ready)
+      .catch(() => {});
     const width = 210;
     const height = 360;
     setMenu({
@@ -1288,6 +1315,18 @@ export function FilesApp({ payload }: { payload?: WindowPayload }) {
               ? () =>
                   menu.entry &&
                   openWindow("editor", { filePath: menu.entry.path, fileName: menu.entry.name })
+              : undefined
+          }
+          onOpenInPx0={
+            // px0 opens files by path relative to $HOME; with no selection it opens on its root.
+            px0Ready && (!menu.entry || relativeToHome(menu.entry.path, homeDir) !== null)
+              ? () =>
+                  openWindow(
+                    "px0",
+                    menu.entry
+                      ? { filePath: relativeToHome(menu.entry.path, homeDir) ?? undefined }
+                      : undefined,
+                  )
               : undefined
           }
           onAddToDesktop={() => addDesktopShortcut(serverId, menu.entry?.path || path)}

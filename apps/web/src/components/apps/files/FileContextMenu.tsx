@@ -4,6 +4,14 @@ import type { CSSProperties } from "react";
 import { isArchive, type FileEntry } from "@/src/lib/api/files";
 import { PageLayer } from "@/src/components/window/window-chrome";
 
+/** px0 is rooted at the SSH user's home and takes paths relative to it: "" for home itself, null when outside or home unknown. */
+export function relativeToHome(path: string, home: string | null) {
+  if (!home) return null;
+  const root = home.replace(/\/+$/, "");
+  if (path === root) return "";
+  return path.startsWith(`${root}/`) ? path.slice(root.length + 1) : null;
+}
+
 export type FileMenuActions = {
   onOpen: () => void;
   onTerminalHere: () => void;
@@ -30,6 +38,8 @@ type FileContextMenuProps = FileMenuActions & {
   selectedEntries?: FileEntry[];
   canPaste: boolean;
   onEdit?: () => void;
+  /** Only given when px0 is installed on the server; without it the item is hidden. */
+  onOpenInPx0?: () => void;
   onAddToDesktop?: () => void;
   /** True while an extraction runs in this window; Extract items are disabled. */
   extracting?: boolean;
@@ -55,6 +65,7 @@ export function menuItems({
   if (!entry) {
     return [
       { label: "Open Terminal", run: a.onTerminalHere },
+      ...(a.onOpenInPx0 ? [{ label: "Open Folder in px0", run: a.onOpenInPx0 }] : []),
       { label: "Paste", run: a.onPaste, disabled: !canPaste },
       "separator",
       { label: "New Folder", run: a.onNewFolder },
@@ -82,6 +93,7 @@ export function menuItems({
     { label: "Open", run: a.onOpen },
     ...(!dir && a.onEdit ? [{ label: "Edit", run: a.onEdit }] : []),
     ...(dir ? [{ label: "Open Terminal", run: a.onTerminalHere }] : []),
+    ...(!dir && a.onOpenInPx0 ? [{ label: "Open in px0", run: a.onOpenInPx0 }] : []),
     ...(dir && a.onAddToDesktop ? [{ label: "Add to Desktop", run: a.onAddToDesktop }] : []),
     { label: "Copy Path", run: a.onCopyPath },
     { label: "Details", run: a.onInfo },

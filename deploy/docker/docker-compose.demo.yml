@@ -1,0 +1,44 @@
+# Demo mode: adds an SSH container with a pre-configured demo user
+# Usage: make demo (starts postgres + server + web + ssh-demo)
+#        make demo-reset (cleans demo data)
+
+services:
+  ssh-demo:
+    image: linuxserver/openssh-server:latest
+    container_name: serverui-ssh-demo
+    environment:
+      # Create user 'demo' with password 'demo'
+      - USER_NAME=demo
+      - USER_PASSWORD=demo
+      # Also allow root login for flexibility (optional)
+      - ROOT_PASSWORD=demo
+      # Public key auth disabled for simplicity (password only)
+      - PUBLIC_KEY=
+      # Expose SSH on standard port inside container
+      - TZ=Etc/UTC
+    ports:
+      # Map to host port 2222 to avoid conflicts with host SSH on 22
+      - "2222:2222"
+    # Pre-seed sample directories and files
+    volumes:
+      - demo-ssh-home:/home/demo
+      - demo-ssh-root:/root
+    healthcheck:
+      test: ["CMD-SHELL", "ss -tlnp | grep :2222 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - serverui-network
+    restart: unless-stopped
+
+volumes:
+  demo-ssh-home:
+    name: serverui-demo-ssh-home
+  demo-ssh-root:
+    name: serverui-demo-ssh-root
+
+networks:
+  serverui-network:
+    external: true

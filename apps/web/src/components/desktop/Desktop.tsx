@@ -12,13 +12,16 @@ import { BrandMark } from "@/src/components/brand/BrandMark";
 import { WindowManager } from "@/src/components/window/WindowManager";
 import { WindowManagerProvider, useWindowManager } from "@/src/components/window/window-context";
 import { WallpaperBackdrop } from "@/src/lib/wallpaper";
+import { TourProvider } from "@/src/components/desktop/Tour";
 
 export function Desktop() {
   const { selectedServer } = useSession();
   return (
     <ServerProvider serverId={selectedServer?.id || ""}>
       <WindowManagerProvider>
-        <DesktopShell />
+        <TourProvider>
+          <DesktopShell />
+        </TourProvider>
       </WindowManagerProvider>
     </ServerProvider>
   );

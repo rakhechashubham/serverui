@@ -22,10 +22,14 @@ type Service struct {
 }
 
 type TestResult struct {
-	OK      bool   `json:"ok"`
-	Latency int64  `json:"latencyMs"`
-	Error   string `json:"error,omitempty"`
-	Server  Public `json:"server"`
+	OK         bool              `json:"ok"`
+	Latency    int64             `json:"latencyMs"`
+	Error      string            `json:"error,omitempty"`       // legacy short message
+	ErrorCode  string            `json:"errorCode,omitempty"`   // machine-readable code
+	ErrorHint  string            `json:"errorHint,omitempty"`   // actionable hint
+	ErrorDocs  string            `json:"errorDocs,omitempty"`   // docs URL
+	Retryable  bool              `json:"retryable,omitempty"`   // whether retry might help
+	Server     Public            `json:"server"`
 }
 
 func NewService(store Store, box crypto.Cipher) *Service {
@@ -203,7 +207,26 @@ func (s *Service) Connect(ctx context.Context, id string) (Public, error) {
 		rec.UpdatedAt = time.Now().UTC()
 		_ = s.store.Update(ctx, rec)
 		log.Printf("SSH connection failed server=%s", rec.Name)
-		return s.public(rec), err
+
+		// Get structured error from pool manager
+		var errorCode, errorHint, errorDocs string
+		var retryable bool
+		if mgr, mgrErr := s.pool.Manager(id); mgrErr == nil {
+			if se := mgr.StructuredError(); se != nil {
+				errorCode = string(se.Code)
+				errorHint = se.Hint
+				errorDocs = se.DocsURL
+				retryable = se.Retryable
+			}
+		}
+
+		pub := s.public(rec)
+		pub.ErrorCode = errorCode
+		pub.ErrorHint = errorHint
+		pub.ErrorDocs = errorDocs
+		pub.ErrorRetryable = retryable
+
+		return pub, err
 	}
 
 	now := time.Now().UTC()
@@ -242,7 +265,15 @@ func (s *Service) Test(ctx context.Context, id string) (TestResult, error) {
 	start := time.Now()
 	cfg, auth, err := s.loadAuth(id)
 	if err != nil {
-		return TestResult{Server: s.public(rec), Error: sshx.PublicError(err)}, err
+		rich := sshx.ToRichResponse(err)
+		return TestResult{
+			Server:    s.public(rec),
+			Error:     sshx.PublicError(err),
+			ErrorCode: rich.Code,
+			ErrorHint: rich.Hint,
+			ErrorDocs: rich.DocsURL,
+			Retryable: rich.Retryable,
+		}, err
 	}
 	err = s.dial(cfg, auth)
 	latency := time.Since(start)
@@ -252,11 +283,16 @@ func (s *Service) Test(ctx context.Context, id string) (TestResult, error) {
 		rec.UpdatedAt = time.Now().UTC()
 		_ = s.store.Update(ctx, rec)
 		log.Printf("Server connection test failed server=%s", rec.Name)
+		rich := sshx.ToRichResponse(err)
 		return TestResult{
-			OK:      false,
-			Latency: latency.Milliseconds(),
-			Error:   rec.LastError,
-			Server:  s.public(rec),
+			OK:         false,
+			Latency:    latency.Milliseconds(),
+			Error:      rec.LastError,
+			ErrorCode:  rich.Code,
+			ErrorHint:  rich.Hint,
+			ErrorDocs:  rich.DocsURL,
+			Retryable:  rich.Retryable,
+			Server:     s.public(rec),
 		}, nil
 	}
 	now := time.Now().UTC()

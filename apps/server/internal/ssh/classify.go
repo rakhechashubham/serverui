@@ -1,8 +1,12 @@
 package sshx
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
-// Error codes sent to API clients with connection test results.
+// Legacy error codes — kept for API compatibility.
+// New code should use ErrorCode constants from errors.go.
 const (
 	CodeInvalidHost        = "invalid_host"
 	CodeConnectionRefused  = "connection_refused"
@@ -17,63 +21,130 @@ const (
 )
 
 // ClassifyError maps an SSH error to a stable code and a user-facing message.
+// DEPRECATED: Use Classify() from errors.go for structured errors.
+// This is kept for backward compatibility with existing API responses.
 func ClassifyError(err error) (code, message string) {
 	if err == nil {
 		return "", ""
 	}
-	msg := strings.ToLower(err.Error())
-	switch {
-	// Auth failures also contain "handshake failed", so match them first.
-	case strings.Contains(msg, "passphrase"):
-		return CodePassphraseRequired, "This private key is protected by a passphrase. Passphrase-protected keys are not supported yet."
-	case strings.Contains(msg, "invalid private key"),
-		strings.Contains(msg, "no key found"),
-		strings.Contains(msg, "private key is required"):
-		return CodeInvalidPrivateKey, "The private key is not valid. Paste the full key, including the BEGIN and END lines."
-	case strings.Contains(msg, "unable to authenticate"),
-		strings.Contains(msg, "no supported methods remain"),
-		strings.Contains(msg, "permission denied"):
-		return CodeAuthFailed, "Authentication failed. Check the username and password or private key."
-	case strings.Contains(msg, "no such host"),
-		strings.Contains(msg, "server misbehaving"),
-		strings.Contains(msg, "lookup "):
-		return CodeInvalidHost, "The host name could not be found. Check the Host / IP field."
-	case strings.Contains(msg, "connection refused"):
-		return CodeConnectionRefused, "Connection refused. The host is reachable but nothing is accepting SSH on this port."
-	case strings.Contains(msg, "i/o timeout"),
-		strings.Contains(msg, "timeout"),
-		strings.Contains(msg, "deadline exceeded"):
-		return CodeTimeout, "Connection timed out. Check the host, the SSH port, and any firewall in between."
-	case strings.Contains(msg, "no route to host"),
-		strings.Contains(msg, "network is unreachable"),
-		strings.Contains(msg, "host is down"):
-		return CodeUnreachable, "The host is unreachable from this machine. Check the address and your network."
-	case strings.Contains(msg, "connection reset"):
-		return CodeConnectionReset, "The server closed the connection. SSH may be blocked by a firewall or connection limit."
-	case strings.Contains(msg, "handshake failed"),
-		strings.Contains(msg, "version string"),
-		strings.Contains(msg, "no common algorithm"):
-		return CodeNotSSH, "Something answered on this port, but it is not a compatible SSH server. Check the SSH port."
-	default:
-		return CodeSSHFailed, "The SSH connection failed. Check the connection details and try again."
+	se := Classify(err, "", 0, "")
+	if se == nil {
+		return "", ""
 	}
+	// Map new codes to legacy codes for API compatibility
+	return legacyCode(se.Code), se.Message
 }
 
-// PublicError is the short API error text, derived from ClassifyError.
+// PublicError returns the short API error text for backward compatibility.
+// DEPRECATED: Use SSHError directly for rich error responses.
 func PublicError(err error) string {
 	if err == nil {
 		return ""
 	}
-	switch code, _ := ClassifyError(err); code {
-	case CodePassphraseRequired:
+	se := Classify(err, "", 0, "")
+	if se == nil {
+		return ""
+	}
+	switch se.Code {
+	case CodeKeyPassphraseProtected:
 		return "passphrase-protected private keys are not supported yet"
-	case CodeInvalidPrivateKey:
+	case CodeKeyInvalidFormat, CodeKeyInvalidPEM, CodeKeyUnsupportedType, CodeKeyEmpty:
 		return "invalid private key"
-	case CodeAuthFailed:
+	case CodeAuthFailed, CodeAuthNoValidMethods, CodeAuthMethodUnsupported:
 		return "authentication failed"
-	case CodeTimeout, CodeConnectionRefused, CodeUnreachable:
+	case CodeConnectionTimeout, CodeConnectionRefused, CodeHostUnreachable, CodeConnectionReset:
 		return "unable to connect to server"
+	case CodeDNSResolutionFailed:
+		return "host not found"
+	case CodeNotSSHServer:
+		return "not an SSH server"
+	case CodeHostKeyChanged, CodeHostKeyVerification:
+		return "host key verification failed"
 	default:
 		return "ssh connection failed"
 	}
+}
+
+// legacyCode maps new ErrorCode to legacy code for API compatibility.
+func legacyCode(code ErrorCode) string {
+	switch code {
+	case CodeKeyPassphraseProtected:
+		return CodePassphraseRequired
+	case CodeKeyInvalidFormat, CodeKeyInvalidPEM, CodeKeyUnsupportedType, CodeKeyEmpty:
+		return CodeInvalidPrivateKey
+	case CodeAuthFailed, CodeAuthNoValidMethods, CodeAuthMethodUnsupported:
+		return CodeAuthFailed
+	case CodeConnectionTimeout:
+		return CodeTimeout
+	case CodeConnectionRefused:
+		return CodeConnectionRefused
+	case CodeDNSResolutionFailed:
+		return CodeInvalidHost
+	case CodeHostUnreachable:
+		return CodeUnreachable
+	case CodeConnectionReset:
+		return CodeConnectionReset
+	case CodeNotSSHServer:
+		return CodeNotSSH
+	case CodeHostKeyChanged, CodeHostKeyVerification:
+		return CodeSSHFailed // No legacy equivalent, map to generic
+	default:
+		return CodeSSHFailed
+	}
+}
+
+// RichErrorResponse is the new API error format with full details.
+// Use this in new API endpoints instead of plain strings.
+type RichErrorResponse struct {
+	Code     string `json:"code"`
+	Message  string `json:"message"`
+	Hint     string `json:"hint,omitempty"`
+	DocsURL  string `json:"docs_url,omitempty"`
+	Retryable bool  `json:"retryable"`
+	Host     string `json:"host,omitempty"`
+	Port     int    `json:"port,omitempty"`
+	Username string `json:"username,omitempty"`
+}
+
+// ToRichResponse converts an error to a RichErrorResponse.
+func ToRichResponse(err error) *RichErrorResponse {
+	se := Classify(err, "", 0, "")
+	if se == nil {
+		return nil
+	}
+	return &RichErrorResponse{
+		Code:      string(se.Code),
+		Message:   se.Message,
+		Hint:      se.Hint,
+		DocsURL:   se.DocsURL,
+		Retryable: se.Retryable,
+		Host:      se.Host,
+		Port:      se.Port,
+		Username:  se.Username,
+	}
+}
+
+// FormatErrorForLog returns a structured log line for the error.
+func FormatErrorForLog(err error) string {
+	se := Classify(err, "", 0, "")
+	if se == nil {
+		return "nil error"
+	}
+	parts := []string{
+		"code=" + string(se.Code),
+		"message=" + se.Message,
+	}
+	if se.Host != "" {
+		parts = append(parts, "host="+se.Host)
+	}
+	if se.Port > 0 {
+		parts = append(parts, fmt.Sprintf("port=%d", se.Port))
+	}
+	if se.Username != "" {
+		parts = append(parts, "user="+se.Username)
+	}
+	if se.Retryable {
+		parts = append(parts, "retryable=true")
+	}
+	return strings.Join(parts, " ")
 }

@@ -28,12 +28,13 @@ type Manager struct {
 	cfg  Config
 	auth AuthMethod
 
-	mu       sync.Mutex
-	client   *ssh.Client
-	status   Status
-	err      string
-	dialing  bool
-	dialWait chan struct{}
+	mu           sync.Mutex
+	client       *ssh.Client
+	status       Status
+	err          string            // legacy short error message
+	structuredErr *SSHError        // structured error for API
+	dialing      bool
+	dialWait     chan struct{}
 }
 
 func NewManager(cfg Config, auth AuthMethod) *Manager {
@@ -64,6 +65,13 @@ func (m *Manager) Status() (Status, string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.status, m.err
+}
+
+// StructuredError returns the last structured error, if any.
+func (m *Manager) StructuredError() *SSHError {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.structuredErr
 }
 
 func (m *Manager) ConnectAsync() {
@@ -103,7 +111,9 @@ func (m *Manager) Ensure() (*ssh.Client, error) {
 		m.dialWait = nil
 		if err != nil {
 			m.status = StatusError
-			m.err = PublicError(err)
+			m.err = PublicError(err) // legacy short message for status
+			// Store structured error for API responses
+			m.structuredErr = Classify(err, cfg.Host, cfg.Port, cfg.Username)
 			m.mu.Unlock()
 			return nil, err
 		}

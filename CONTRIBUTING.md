@@ -70,19 +70,72 @@ test/filesystem-paths
 
 ### Commit messages
 
-Use [Conventional Commits](https://www.conventionalcommits.org/):
+Use [Conventional Commits](https://www.conventionalcommits.org/). The `commit-msg` hook enforces this format.
 
 ```
-feat: add private key authentication
-fix: prevent filesystem path traversal
-test: add SSH configuration tests
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+**Types (required):**
+| Type | Purpose |
+|------|---------|
+| `feat` | A new feature |
+| `fix` | A bug fix |
+| `docs` | Documentation only changes |
+| `style` | Code style (formatting, missing semicolons, etc.) |
+| `refactor` | Code changes that neither fix bugs nor add features |
+| `test` | Adding or updating tests |
+| `chore` | Maintenance (deps, build, config, tooling) |
+| `perf` | Performance improvements |
+| `ci` | CI/CD changes |
+| `build` | Build system or external dependencies |
+| `revert` | Reverts a previous commit |
+
+**Scope (optional but encouraged):**
+Use a short, lowercase identifier for the area affected.
+Common scopes in ServerUI: `files`, `ssh`, `ui`, `server`, `desktop`, `docker`, `ci`, `deps`, `config`, `auth`, `db`, `api`.
+
+**Description (required):**
+- Present tense ("add" not "added")
+- Lowercase first letter
+- No period at the end
+- Under ~72 characters
+
+**Examples:**
+```
+feat(files): add archive extraction support
+fix(ssh): prevent connection timeout on slow networks
 docs: improve local setup guide
-refactor: isolate SSH connections by server id
-chore: ignore local credential files
-ci: cache npm and Go modules
+refactor(server): isolate SSH connections by server ID
+test(ui): add file tree component tests
+chore(deps): update Go dependencies
+perf(api): reduce connection pool overhead
+ci: add PR title validation workflow
+revert: feat(files): add archive extraction support
 ```
 
-Keep the subject under ~72 characters. Do not put secrets in commit messages.
+**Breaking changes:**
+Add `BREAKING CHANGE:` in the footer (or `!` after type/scope):
+```
+feat(api)!: change authentication response format
+
+BREAKING CHANGE: auth response now includes user object instead of just token
+```
+
+**Commit message validation:**
+- Local: `make hooks` installs the `commit-msg` hook (runs on every commit)
+- CI: PR title validated by GitHub Actions (`.github/workflows/pr-title.yml`)
+- Both enforce the same rules
+
+**Tips:**
+- Use `git commit -m "feat(files): add archive extraction"` for single-line
+- Use `git commit` (no `-m`) for multi-line with body/footer
+- `git commit --amend` to fix the last commit message
+- `git rebase -i HEAD~3` to reword/squash recent commits before pushing
 
 ## Code style
 

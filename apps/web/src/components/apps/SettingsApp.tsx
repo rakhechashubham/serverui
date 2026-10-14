@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 
 import { WALLPAPERS, useWallpaper, type WallpaperId } from "@/src/lib/wallpaper";
+import { ThemeToggleFull } from "@/src/components/desktop/ThemeToggle";
 
 /**
  * Settings: General tab with wallpaper selection.
@@ -34,9 +35,32 @@ export function SettingsApp() {
         >
           General
         </button>
+        <button
+          type="button"
+          className="rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-sky-400 hover:bg-[var(--app-hover)]"
+        >
+          Appearance
+        </button>
       </aside>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto px-6 py-8">
         <h3 className="text-2xl font-semibold tracking-tight sui-title">General</h3>
+        
+        {/* Appearance Section */}
+        <section
+          className="sui-card mt-6 max-w-2xl space-y-3 rounded-[14px] p-4"
+          aria-labelledby="settings-appearance"
+        >
+          <h4 id="settings-appearance" className="text-sm font-medium sui-title">
+            Appearance
+          </h4>
+          <p className="text-sm leading-6 sui-muted">
+            Choose your preferred color scheme. System preference will automatically match your OS setting.
+          </p>
+          <div className="flex items-center gap-3">
+            <ThemeToggleFull />
+          </div>
+        </section>
+
         <section
           className="sui-card mt-6 max-w-2xl space-y-3 rounded-[14px] p-4"
           aria-labelledby="settings-wallpaper"

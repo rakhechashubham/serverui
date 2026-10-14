@@ -26,11 +26,16 @@ export const metadata: Metadata = {
 
 const themeScript = `try {
   var theme = localStorage.getItem("serverui-theme");
-  if (theme !== "light" && theme !== "dark") theme = "dark";
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
+  var resolved = theme;
+  if (theme === "system") {
+    resolved = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  if (resolved !== "light" && resolved !== "dark") resolved = "dark";
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.style.colorScheme = resolved;
 } catch (e) {
   document.documentElement.dataset.theme = "dark";
+  document.documentElement.style.colorScheme = "dark";
 }
 try {
   if ("serviceWorker" in navigator) {

@@ -2,6 +2,8 @@
  * Map API / network failures to short, actionable product copy.
  * Never include credentials, tokens, or private key material.
  */
+import { formatSSHError, SSHErrorResponse, isAuthError, isNetworkError, isKeyError, isRetryableError } from "./ssh-errors";
+
 export function sanitizeErrorText(value: string) {
   return value
     .replace(/-----BEGIN[\s\S]*?-----END [^-]+-----/g, "[redacted key]")
@@ -14,6 +16,21 @@ export function friendlyError(err: unknown, fallback = "Something went wrong.") 
     err instanceof Error ? err.message : typeof err === "string" ? err : fallback,
   );
   const message = raw || fallback;
+
+  // Check for structured SSH error response first
+  if (typeof err === "object" && err !== null && "code" in err) {
+    const sshErr = err as SSHErrorResponse;
+    const formatted = formatSSHError(sshErr);
+    return {
+      title: formatted.title,
+      detail: formatted.detail,
+      hint: formatted.hint,
+      docsUrl: formatted.docsUrl,
+      retryable: formatted.retryable,
+      raw: message,
+    };
+  }
+
   const lower = message.toLowerCase();
 
   if (
@@ -86,8 +103,12 @@ export function friendlyError(err: unknown, fallback = "Something went wrong.") 
 }
 
 /** Joins a friendlyError result into one sentence-cased line. */
-export function formatFriendly(mapped: { title: string; detail: string }) {
-  return `${mapped.title.replace(/\.$/, "")}. ${mapped.detail}`;
+export function formatFriendly(mapped: { title: string; detail: string; hint?: string }) {
+  const base = `${mapped.title.replace(/\.$/, "")}. ${mapped.detail}`;
+  if (mapped.hint) {
+    return `${base} ${mapped.hint}`;
+  }
+  return base;
 }
 
 export function formatConnectionTestMessage(
@@ -104,3 +125,6 @@ export function formatConnectionTestMessage(
   }
   return formatFriendly(friendlyError(error || "Connection failed", "Connection failed"));
 }
+
+// Re-export SSH error utilities for convenience
+export { formatSSHError, SSHErrorResponse, isAuthError, isNetworkError, isKeyError, isRetryableError } from "./ssh-errors";

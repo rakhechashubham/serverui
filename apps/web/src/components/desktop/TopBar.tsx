@@ -109,6 +109,7 @@ export function TopBar() {
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-label={`Current server ${name}. Open server menu.`}
+            data-tour="server-switcher"
           >
             <span className="truncate font-medium">{name}</span>
             <ChevronDown className="size-3 opacity-70" aria-hidden />

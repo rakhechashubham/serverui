@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Commit message hook: enforces Conventional Commits format
+# Usage: git commit -m "feat(scope): description"
+#        git commit -m "fix: description"
+#        git commit -m "revert: feat(scope): description"
+
+set -euo pipefail
+
+# Read the commit message from the file passed as first argument
+commit_msg_file="$1"
+commit_msg="$(cat "$commit_msg_file")"
+
+# Skip merge commits, fixup, squash, and amend messages
+if echo "$commit_msg" | grep -qE '^(Merge|fixup!|squash!|amend!)'; then
+  exit 0
+fi
+
+# Conventional Commits regex
+# type(optional-scope): description
+# type: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
+# scope: optional, lowercase with hyphens (e.g., files, ssh, ui, server)
+# description: present tense, lowercase first letter, no period at end
+
+types="feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert"
+scope="[a-z0-9-]+"
+pattern="^(${types})(\(${scope}\))?: .+"
+
+if ! echo "$commit_msg" | grep -qE "$pattern"; then
+  echo "ERROR: Commit message does not follow Conventional Commits format."
+  echo ""
+  echo "Expected format: <type>(<scope>): <description>"
+  echo ""
+  echo "Types:"
+  echo "  feat      - A new feature"
+  echo "  fix       - A bug fix"
+  echo "  docs      - Documentation only changes"
+  echo "  style     - Code style changes (formatting, missing semicolons, etc.)"
+  echo "  refactor  - Code changes that neither fix bugs nor add features"
+  echo "  test      - Adding or updating tests"
+  echo "  chore     - Maintenance tasks (deps, build, config)"
+  echo "  perf      - Performance improvements"
+  echo "  ci        - CI/CD changes"
+  echo "  build     - Build system or external dependencies"
+  echo "  revert    - Reverts a previous commit"
+  echo ""
+  echo "Scope (optional but encouraged):"
+  echo "  files, ssh, ui, server, desktop, docker, ci, deps, config, etc."
+  echo ""
+  echo "Examples:"
+  echo "  feat(files): add archive extraction support"
+  echo "  fix(ssh): prevent connection timeout on slow networks"
+  echo "  docs: improve local setup guide"
+  echo "  refactor(server): isolate SSH connections by server ID"
+  echo "  test(ui): add file tree component tests"
+  echo "  chore(deps): update Go dependencies"
+  echo "  revert: feat(files): add archive extraction support"
+  echo ""
+  echo "Your message: \"$commit_msg\""
+  exit 1
+fi
+
+# Check subject line length (~72 chars recommended)
+subject="$(echo "$commit_msg" | head -n1)"
+if [ ${#subject} -gt 72 ]; then
+  echo "WARNING: Commit subject exceeds 72 characters (${#subject})."
+  echo "Consider shortening for better readability in logs."
+  # Don't fail, just warn
+fi
+
+# Check for breaking change footer (optional)
+# BREAKING CHANGE: description
+# or footer like "BREAKING CHANGE: ..."
+
+exit 0

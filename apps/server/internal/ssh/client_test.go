@@ -15,16 +15,16 @@ import (
 func TestDialPasswordAndKey(t *testing.T) {
 	password := "correct-horse"
 	signer := testClientSigner(t)
-	addr := startTestSSHServer(t, "deploy", password, signer.PublicKey())
+	addr, fingerprint := startTestSSHServer(t, "deploy", password, signer.PublicKey())
 	host, port := splitAddr(t, addr)
 
-	client, err := Dial(Config{Host: host, Port: port, Username: "deploy"}, PasswordAuth{Password: password})
+	client, err := Dial(Config{Host: host, Port: port, Username: "deploy", HostKeyFingerprint: fingerprint}, PasswordAuth{Password: password})
 	if err != nil {
 		t.Fatalf("password auth: %v", err)
 	}
 	_ = client.Close()
 
-	client, err = Dial(Config{Host: host, Port: port, Username: "deploy"}, PublicKeyAuth{signer: signer})
+	client, err = Dial(Config{Host: host, Port: port, Username: "deploy", HostKeyFingerprint: fingerprint}, PublicKeyAuth{signer: signer})
 	if err != nil {
 		t.Fatalf("key auth: %v", err)
 	}
@@ -32,9 +32,9 @@ func TestDialPasswordAndKey(t *testing.T) {
 }
 
 func TestDialInvalidPassword(t *testing.T) {
-	addr := startTestSSHServer(t, "deploy", "correct", nil)
+	addr, fingerprint := startTestSSHServer(t, "deploy", "correct", nil)
 	host, port := splitAddr(t, addr)
-	_, err := Dial(Config{Host: host, Port: port, Username: "deploy"}, PasswordAuth{Password: "wrong"})
+	_, err := Dial(Config{Host: host, Port: port, Username: "deploy", HostKeyFingerprint: fingerprint}, PasswordAuth{Password: "wrong"})
 	if err == nil {
 		t.Fatal("expected auth failure")
 	}
@@ -70,7 +70,7 @@ func TestPoolIsolatesServers(t *testing.T) {
 	}
 }
 
-func startTestSSHServer(t *testing.T, user, password string, pub ssh.PublicKey) string {
+func startTestSSHServer(t *testing.T, user, password string, pub ssh.PublicKey) (string, string) {
 	t.Helper()
 	config := &ssh.ServerConfig{
 		PasswordCallback: func(conn ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
@@ -127,7 +127,7 @@ func startTestSSHServer(t *testing.T, user, password string, pub ssh.PublicKey) 
 			}(nConn)
 		}
 	}()
-	return ln.Addr().String()
+	return ln.Addr().String(), ssh.FingerprintSHA256(signer.PublicKey())
 }
 
 func testClientSigner(t *testing.T) ssh.Signer {

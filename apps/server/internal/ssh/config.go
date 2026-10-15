@@ -8,10 +8,11 @@ import (
 )
 
 type Config struct {
-	Host     string
-	Port     int
-	Username string
-	Password string
+	Host               string
+	Port               int
+	Username           string
+	Password           string
+	HostKeyFingerprint string
 }
 
 // LoadConfig reads a single-host SSH target from process environment.

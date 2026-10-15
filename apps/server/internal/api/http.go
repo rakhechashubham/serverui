@@ -36,6 +36,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("GET /api/servers", s.listServers)
 	mux.HandleFunc("POST /api/servers", s.createServer)
+	mux.HandleFunc("POST /api/servers/group", s.assignServerGroup)
 	mux.HandleFunc("GET /api/servers/{id}", s.getServer)
 	mux.HandleFunc("PUT /api/servers/{id}", s.updateServer)
 	mux.HandleFunc("DELETE /api/servers/{id}", s.deleteServer)
@@ -63,6 +64,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/files/mkdir", s.mkdir)
 	mux.HandleFunc("POST /api/files/rename", s.rename)
 	mux.HandleFunc("POST /api/files/copy", s.transfer(s.files.Copy))
+	mux.HandleFunc("POST /api/files/copy-between", s.copyBetweenServers)
 	mux.HandleFunc("POST /api/files/move", s.transfer(s.files.Move))
 	mux.HandleFunc("POST /api/files/compress", s.compress)
 	mux.HandleFunc("POST /api/files/upload", s.upload)
@@ -107,24 +109,28 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 }
 
 type serverBody struct {
-	Name       string `json:"name"`
-	Host       string `json:"host"`
-	Port       int    `json:"port"`
-	Username   string `json:"username"`
-	AuthType   string `json:"authType"`
-	Password   string `json:"password"`
-	PrivateKey string `json:"privateKey"`
+	Name               string `json:"name"`
+	GroupName          string `json:"groupName"`
+	Host               string `json:"host"`
+	Port               int    `json:"port"`
+	Username           string `json:"username"`
+	AuthType           string `json:"authType"`
+	HostKeyFingerprint string `json:"hostKeyFingerprint"`
+	Password           string `json:"password"`
+	PrivateKey         string `json:"privateKey"`
 }
 
 func (b serverBody) input() servers.Input {
 	return servers.Input{
-		Name:       b.Name,
-		Host:       b.Host,
-		Port:       b.Port,
-		Username:   b.Username,
-		AuthType:   b.AuthType,
-		Password:   b.Password,
-		PrivateKey: b.PrivateKey,
+		Name:               b.Name,
+		GroupName:          b.GroupName,
+		Host:               b.Host,
+		Port:               b.Port,
+		Username:           b.Username,
+		AuthType:           b.AuthType,
+		HostKeyFingerprint: b.HostKeyFingerprint,
+		Password:           b.Password,
+		PrivateKey:         b.PrivateKey,
 	}
 }
 
@@ -175,6 +181,22 @@ func (s *Server) updateServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) assignServerGroup(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ServerIDs []string `json:"serverIds"`
+		GroupName string   `json:"groupName"`
+	}
+	if err := decodeJSON(w, r, &body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return
+	}
+	if err := s.servers.AssignGroup(r.Context(), body.ServerIDs, body.GroupName); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) deleteServer(w http.ResponseWriter, r *http.Request) {
@@ -630,6 +652,48 @@ func (s *Server) mkdir(w http.ResponseWriter, r *http.Request) {
 }
 
 type transferFunc func(ctx context.Context, serverID, from, to string, overwrite bool) error
+
+func (s *Server) copyBetweenServers(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		SourceServerID string `json:"sourceServerId"`
+		SourcePath     string `json:"sourcePath"`
+		DestServerID   string `json:"destServerId"`
+		DestPath       string `json:"destPath"`
+	}
+	if err := decodeJSON(w, r, &body); err != nil || body.SourceServerID == "" || body.DestServerID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming is unavailable"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	enc := json.NewEncoder(w)
+	write := func(value any) bool {
+		if err := enc.Encode(value); err != nil {
+			return false
+		}
+		flusher.Flush()
+		return true
+	}
+	write(map[string]any{"type": "started"})
+	err := s.files.CopyBetween(r.Context(), body.SourceServerID, body.SourcePath, body.DestServerID, body.DestPath, func(done, total int64) {
+		if r.Context().Err() == nil {
+			write(map[string]any{"type": "progress", "done": done, "total": total})
+		}
+	})
+	if r.Context().Err() != nil {
+		return
+	}
+	if err != nil {
+		write(map[string]any{"type": "error", "error": err.Error()})
+		return
+	}
+	write(map[string]any{"type": "done"})
+}
 
 func (s *Server) transfer(op transferFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

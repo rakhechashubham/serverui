@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -56,6 +57,121 @@ func (s *Service) client(serverID string) (*sftp.Client, error) {
 		return nil, err
 	}
 	return sftp.NewClient(conn)
+}
+
+// CopyBetween streams one regular file between two pinned SSH connections. It
+// never stages file contents on the local filesystem; only the destination's
+// temporary file is visible until the transfer completes.
+func (s *Service) CopyBetween(ctx context.Context, sourceID, sourceRaw, destID, destRaw string, progress func(int64, int64)) error {
+	sourcePath, err := CleanPath(sourceRaw)
+	if err != nil || sourcePath == "/" {
+		return fmt.Errorf("invalid source path")
+	}
+	destPath, err := CleanPath(destRaw)
+	if err != nil || destPath == "/" {
+		return fmt.Errorf("invalid destination path")
+	}
+	if sourceID == "" || destID == "" || sourceID == destID {
+		return fmt.Errorf("choose two different servers")
+	}
+	src, err := s.client(sourceID)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	dst, err := s.client(destID)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+
+	info, err := src.Stat(sourcePath)
+	if err != nil {
+		return mapFSError(err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("only regular files can be copied between servers")
+	}
+	if _, err := dst.Lstat(destPath); err == nil {
+		return ErrExists
+	} else if !os.IsNotExist(err) {
+		return mapFSError(err)
+	}
+
+	in, err := src.Open(sourcePath)
+	if err != nil {
+		return mapFSError(err)
+	}
+	defer in.Close()
+	tmp := tempName(destPath)
+	out, err := dst.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
+	if err != nil {
+		return mapFSError(err)
+	}
+	committed := false
+	defer func() {
+		_ = out.Close()
+		if !committed {
+			_ = dst.Remove(tmp)
+		}
+	}()
+
+	// Closing SFTP handles interrupts a blocked network read/write on cancel.
+	finished := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = in.Close()
+			_ = out.Close()
+		case <-finished:
+		}
+	}()
+	defer close(finished)
+
+	buf := make([]byte, 256<<10)
+	var copied int64
+	if progress != nil {
+		progress(0, info.Size())
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("operation cancelled")
+		}
+		n, readErr := in.Read(buf)
+		if n > 0 {
+			written, writeErr := out.Write(buf[:n])
+			copied += int64(written)
+			if progress != nil {
+				progress(copied, info.Size())
+			}
+			if writeErr != nil {
+				return mapFSError(writeErr)
+			}
+			if written != n {
+				return io.ErrShortWrite
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			if ctx.Err() != nil {
+				return fmt.Errorf("operation cancelled")
+			}
+			return mapFSError(readErr)
+		}
+	}
+	if copied != info.Size() {
+		return fmt.Errorf("source file changed during copy; destination was not committed")
+	}
+	if err := out.Close(); err != nil {
+		return mapFSError(err)
+	}
+	if err := dst.Rename(tmp, destPath); err != nil {
+		return mapFSError(err)
+	}
+	committed = true
+	return nil
 }
 
 func (s *Service) List(serverID, rawPath string) ([]Entry, error) {

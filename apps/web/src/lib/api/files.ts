@@ -1,4 +1,6 @@
 import { apiRequest } from "@/src/lib/api/client";
+import { apiUrl } from "@/src/lib/api/origin";
+import { getInjectedDesktopConfig, localAuthHeaderName } from "@/src/lib/runtime/config";
 import { authenticatedApiUrl } from "@/src/lib/runtime";
 
 export type FileEntry = {
@@ -102,6 +104,64 @@ export function moveItem(serverId: string, from: string, to: string, overwrite =
     body: JSON.stringify({ serverId, from, to, overwrite }),
     timeoutMs: LONG_OPERATION_MS,
   });
+}
+
+export async function copyFileBetweenServers(
+  sourceServerId: string,
+  sourcePath: string,
+  destServerId: string,
+  destPath: string,
+  signal: AbortSignal,
+  onProgress: (done: number, total: number) => void,
+) {
+  const headers = new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store" });
+  const token = getInjectedDesktopConfig()?.localAuthToken?.trim();
+  if (token) headers.set(localAuthHeaderName(), token);
+  const response = await fetch(apiUrl("/api/files/copy-between"), {
+    method: "POST",
+    headers,
+    cache: "no-store",
+    credentials: "omit",
+    signal,
+    body: JSON.stringify({ sourceServerId, sourcePath, destServerId, destPath }),
+  });
+  if (!response.ok) {
+    let message = "server-to-server copy failed";
+    try {
+      message = ((await response.json()) as { error?: string }).error || message;
+    } catch {
+      // Keep the generic message when the response isn't JSON.
+    }
+    throw new Error(message);
+  }
+  if (!response.body) throw new Error("progress stream unavailable");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      pending += decoder.decode(value, { stream: !done });
+      const lines = pending.split("\n");
+      pending = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line) as {
+          type: string;
+          done?: number;
+          total?: number;
+          error?: string;
+        };
+        if (event.type === "progress") onProgress(event.done || 0, event.total || 0);
+        if (event.type === "error") throw new Error(event.error || "server-to-server copy failed");
+        if (event.type === "done") return;
+      }
+      if (done) break;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  throw new Error("copy ended before completion");
 }
 
 export const ARCHIVE_FORMATS = [

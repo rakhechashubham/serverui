@@ -4,6 +4,7 @@ export type ServerStatus =
 export type Server = {
   id: string;
   name: string;
+  groupName?: string;
   hostname: string;
   address: string;
   status: ServerStatus;
@@ -11,11 +12,13 @@ export type Server = {
   sshPort?: number;
   username?: string;
   authType?: "password" | "private_key";
+  hostKeyFingerprint?: string;
   error?: string;
 };
 
 export type NewServerInput = {
   name: string;
+  groupName?: string;
   address: string;
   hostname?: string;
   sshPort: number;
@@ -23,4 +26,5 @@ export type NewServerInput = {
   authType: "password" | "private_key";
   password?: string;
   privateKey?: string;
+  hostKeyFingerprint?: string;
 };

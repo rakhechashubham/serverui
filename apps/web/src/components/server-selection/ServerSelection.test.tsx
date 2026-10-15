@@ -79,6 +79,7 @@ describe("ServerSelection", () => {
         host: "203.0.113.10",
         port: 22,
         username: "deploy",
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         cpuUsage: 0,
         memoryUsage: 0,
         diskUsage: 0,

@@ -13,6 +13,7 @@ export type FileMenuActions = {
   onRename: () => void;
   onDelete: () => void;
   onCopy: () => void;
+  onCopyToServer?: () => void;
   onCut: () => void;
   onPaste: () => void;
   onCompress: () => void;
@@ -91,6 +92,7 @@ export function menuItems({
     { label: "Delete", run: a.onDelete },
     "separator",
     { label: "Copy", run: a.onCopy },
+    ...(!dir && a.onCopyToServer ? [{ label: "Copy to Server…", run: a.onCopyToServer }] : []),
     { label: "Cut", run: a.onCut },
     ...(archive
       ? [

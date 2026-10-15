@@ -12,6 +12,7 @@ const server: Server = {
   status: "online",
   sshPort: 22,
   username: "deploy",
+  hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 };
 
 describe("ServerCard", () => {

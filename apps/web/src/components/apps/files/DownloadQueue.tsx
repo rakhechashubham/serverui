@@ -5,12 +5,11 @@ import { downloadUrl, type FileEntry } from "@/src/lib/api/files";
 import { formatSize } from "@/src/lib/files/format";
 import { toolbarClass } from "@/src/components/apps/files/FileToolbar";
 
-// ponytail: files are buffered in memory to report progress; above this size the browser's own
-// download manager takes over (no in-app progress). Stream to disk via the File System Access API
-// if large in-app downloads become a need.
+// Files below this limit are buffered in memory so ServerUI can show progress and cancel them.
+// Larger files are handed to the WebView download manager to avoid large memory allocations.
 const IN_APP_LIMIT = 512 * 1024 * 1024;
 
-export type DownloadState = "pending" | "active" | "done" | "failed" | "browser";
+export type DownloadState = "pending" | "active" | "done" | "failed" | "cancelled" | "browser";
 
 export type DownloadItem = {
   path: string;
@@ -31,8 +30,12 @@ function saveHref(href: string, name: string) {
   link.remove();
 }
 
-async function fetchWithProgress(url: string, onProgress: (loaded: number) => void) {
-  const response = await fetch(url, { cache: "no-store" });
+async function fetchWithProgress(
+  url: string,
+  onProgress: (loaded: number) => void,
+  signal: AbortSignal,
+) {
+  const response = await fetch(url, { cache: "no-store", signal });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error || `download failed (${response.status})`);
@@ -55,6 +58,7 @@ export function useDownloadQueue(serverId: string) {
   const [items, setItems] = useState<DownloadItem[]>([]);
   const running = useRef(false);
   const queue = useRef<DownloadItem[]>([]);
+  const controllers = useRef(new Map<string, AbortController>());
 
   const patch = useCallback((path: string, next: Partial<DownloadItem>) => {
     setItems((prev) => prev.map((item) => (item.path === path ? { ...item, ...next } : item)));
@@ -72,17 +76,29 @@ export function useDownloadQueue(serverId: string) {
         continue;
       }
       patch(item.path, { state: "active", loaded: 0, error: undefined });
+      const controller = new AbortController();
+      controllers.current.set(item.path, controller);
       try {
-        const blob = await fetchWithProgress(url, (loaded) => patch(item.path, { loaded }));
+        const blob = await fetchWithProgress(
+          url,
+          (loaded) => patch(item.path, { loaded }),
+          controller.signal,
+        );
         const href = URL.createObjectURL(blob);
         saveHref(href, item.name);
         setTimeout(() => URL.revokeObjectURL(href), 10_000);
         patch(item.path, { state: "done", loaded: blob.size });
       } catch (err) {
-        patch(item.path, {
-          state: "failed",
-          error: err instanceof Error ? err.message : "download failed",
-        });
+        if (controller.signal.aborted) {
+          patch(item.path, { state: "cancelled", error: undefined });
+        } else {
+          patch(item.path, {
+            state: "failed",
+            error: err instanceof Error ? err.message : "download failed",
+          });
+        }
+      } finally {
+        controllers.current.delete(item.path);
       }
     }
     running.current = false;
@@ -115,20 +131,35 @@ export function useDownloadQueue(serverId: string) {
     void run();
   }, [items, patch, run]);
 
+  const cancel = useCallback(
+    (path: string) => {
+      const controller = controllers.current.get(path);
+      if (controller) {
+        controller.abort();
+      } else {
+        queue.current = queue.current.filter((item) => item.path !== path);
+      }
+      patch(path, { state: "cancelled", error: undefined });
+    },
+    [patch],
+  );
+
   const dismiss = useCallback(() => {
     setItems((prev) => prev.filter((item) => item.state === "active" || item.state === "pending"));
   }, []);
 
-  return { items, start, retryFailed, dismiss };
+  return { items, start, retryFailed, cancel, dismiss };
 }
 
 export function DownloadPanel({
   items,
   onRetry,
+  onCancel,
   onDismiss,
 }: {
   items: DownloadItem[];
   onRetry: () => void;
+  onCancel: (path: string) => void;
   onDismiss: () => void;
 }) {
   if (items.length === 0) return null;
@@ -167,7 +198,14 @@ export function DownloadPanel({
               <span className="w-40 min-w-0 truncate" title={item.path}>
                 {item.name}
               </span>
-              <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sky-200/70 dark:bg-sky-900/60">
+              <span
+                role="progressbar"
+                aria-label={`Download progress for ${item.name}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={item.state === "done" || item.state === "browser" ? 100 : pct}
+                className="h-1.5 flex-1 overflow-hidden rounded-full bg-sky-200/70 dark:bg-sky-900/60"
+              >
                 <span
                   className={`block h-full ${item.state === "failed" ? "bg-red-500" : "bg-sky-500"}`}
                   style={{
@@ -176,15 +214,27 @@ export function DownloadPanel({
                 />
               </span>
               <span
-                className={`w-44 shrink-0 truncate text-right ${item.state === "failed" ? "text-red-700 dark:text-red-300" : ""}`}
+                className={`w-52 shrink-0 truncate text-right ${item.state === "failed" ? "text-red-700 dark:text-red-300" : ""}`}
                 title={item.error}
               >
                 {item.state === "pending" && "Waiting"}
-                {item.state === "active" && `${formatSize(item.loaded)} / ${formatSize(item.size)}`}
-                {item.state === "done" && "Done"}
+                {item.state === "active" &&
+                  `${pct}% · ${formatSize(item.loaded)} / ${formatSize(item.size)}`}
+                {item.state === "done" && `Done · ${formatSize(item.loaded)}`}
                 {item.state === "browser" && "Sent to browser downloads"}
+                {item.state === "cancelled" && `Cancelled · ${formatSize(item.loaded)} received`}
                 {item.state === "failed" && `Failed: ${item.error}`}
               </span>
+              {item.state === "active" || item.state === "pending" ? (
+                <button
+                  type="button"
+                  className={toolbarClass}
+                  onClick={() => onCancel(item.path)}
+                  aria-label={`Cancel download of ${item.name}`}
+                >
+                  Cancel
+                </button>
+              ) : null}
             </li>
           );
         })}

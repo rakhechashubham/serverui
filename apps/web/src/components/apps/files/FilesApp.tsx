@@ -11,6 +11,7 @@ import {
   cancelExtract,
   compressItems,
   copyItem,
+  copyFileBetweenServers,
   createDirectory,
   createFile,
   deleteFile,
@@ -34,7 +35,7 @@ import {
 import { useWindowManager, type WindowPayload } from "@/src/components/window/window-context";
 import { addDesktopShortcut } from "@/src/lib/desktop-shortcuts";
 import { useServer } from "@/src/lib/api/server-context";
-import { useSelectedServer } from "@/src/lib/session";
+import { useSelectedServer, useSession } from "@/src/lib/session";
 import { formatSize, totalSize } from "@/src/lib/files/format";
 import { Breadcrumbs } from "@/src/components/apps/files/Breadcrumbs";
 import { DownloadPanel, useDownloadQueue } from "@/src/components/apps/files/DownloadQueue";
@@ -95,6 +96,15 @@ type CompressState = {
   busy: boolean;
 };
 
+type RemoteCopyState = {
+  item: FileEntry;
+  destServerId: string;
+  destPath: string;
+  done: number;
+  total: number;
+  busy: boolean;
+};
+
 function withArchiveExt(name: string, format: ArchiveFormat) {
   const ext = ARCHIVE_FORMATS.find((f) => f.id === format)!.ext;
   const suffix = archiveSuffix(name);
@@ -105,6 +115,7 @@ export function FilesApp({ payload }: { payload?: WindowPayload }) {
   const { openWindow } = useWindowManager();
   const { server } = useServer();
   const selectedServer = useSelectedServer();
+  const { servers } = useSession();
   const [path, setPath] = useState("/");
   const [history, setHistory] = useState<string[]>(["/"]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -132,6 +143,7 @@ export function FilesApp({ payload }: { payload?: WindowPayload }) {
   const [clipboard, setClipboard] = useState<Clipboard | null>(null);
   const [pendingPaste, setPendingPaste] = useState<PendingPaste | null>(null);
   const [compress, setCompress] = useState<CompressState | null>(null);
+  const [remoteCopy, setRemoteCopy] = useState<RemoteCopyState | null>(null);
   const [folderDownload, setFolderDownload] = useState<FileEntry[] | null>(null);
   // The job as started; ExtractStatus owns its live progress so polling only
   // re-renders the banner, not every row of the folder.
@@ -142,11 +154,68 @@ export function FilesApp({ payload }: { payload?: WindowPayload }) {
   // The folder on screen, read when a background extraction finishes.
   const pathRef = useRef(path);
   const compressInputRef = useRef<HTMLInputElement>(null);
+  const remoteCopyAbort = useRef<AbortController | null>(null);
   const serverId = selectedServer?.id || "";
   const downloads = useDownloadQueue(serverId);
   // The server resolves "~" to the user's real home (e.g. /root for root);
   // remember it so the sidebar can highlight Home.
   const [homeDir, setHomeDir] = useState<string | null>(null);
+
+  function openRemoteCopy(item: FileEntry) {
+    const target = servers.find(
+      (candidate) => candidate.id !== serverId && candidate.hostKeyFingerprint,
+    );
+    if (!target) {
+      setError("Add another verified server before copying between servers.");
+      return;
+    }
+    setRemoteCopy({
+      item,
+      destServerId: target.id,
+      destPath: item.path,
+      done: 0,
+      total: item.size,
+      busy: false,
+    });
+  }
+
+  async function runRemoteCopy() {
+    if (!remoteCopy) return;
+    const controller = new AbortController();
+    remoteCopyAbort.current = controller;
+    setRemoteCopy({ ...remoteCopy, busy: true, done: 0 });
+    setError(null);
+    try {
+      await copyFileBetweenServers(
+        serverId,
+        remoteCopy.item.path,
+        remoteCopy.destServerId,
+        remoteCopy.destPath,
+        controller.signal,
+        (done, total) => {
+          setRemoteCopy((current) => (current ? { ...current, done, total } : current));
+        },
+      );
+      setRemoteCopy(null);
+      setNotice({
+        type: "success",
+        message: `Copied “${remoteCopy.item.name}” to ${servers.find((item) => item.id === remoteCopy.destServerId)?.name || "backup server"}.`,
+      });
+    } catch (err) {
+      if (controller.signal.aborted) {
+        setRemoteCopy(null);
+        setNotice({
+          type: "info",
+          message: `Copy of “${remoteCopy.item.name}” cancelled. The destination’s temporary file was removed.`,
+        });
+      } else {
+        setRemoteCopy((current) => (current ? { ...current, busy: false } : current));
+        setError(errorMessage(err, "server-to-server copy failed"));
+      }
+    } finally {
+      remoteCopyAbort.current = null;
+    }
+  }
 
   async function load(nextPath: string) {
     if (!serverId) return;
@@ -905,6 +974,80 @@ export function FilesApp({ payload }: { payload?: WindowPayload }) {
             </button>
           </form>
         ) : null}
+        {remoteCopy ? (
+          <form
+            className="sui-finder-sheet flex flex-wrap items-center gap-2 px-4 py-2 text-[12px]"
+            role="dialog"
+            aria-label="Copy file to another server"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void runRemoteCopy();
+            }}
+          >
+            <strong className="w-full">Copy “{remoteCopy.item.name}” to another server</strong>
+            <label className="sui-finder-muted" htmlFor="remote-copy-server">
+              Server
+            </label>
+            <select
+              id="remote-copy-server"
+              className="sui-input rounded-md px-2 py-1"
+              value={remoteCopy.destServerId}
+              disabled={remoteCopy.busy}
+              onChange={(event) =>
+                setRemoteCopy({ ...remoteCopy, destServerId: event.target.value })
+              }
+            >
+              {servers
+                .filter((item) => item.id !== serverId && item.hostKeyFingerprint)
+                .map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+            </select>
+            <label className="sui-finder-muted" htmlFor="remote-copy-path">
+              Destination file path
+            </label>
+            <input
+              id="remote-copy-path"
+              className="sui-input min-w-0 flex-1 rounded-md px-2 py-1"
+              value={remoteCopy.destPath}
+              disabled={remoteCopy.busy}
+              onChange={(event) => setRemoteCopy({ ...remoteCopy, destPath: event.target.value })}
+            />
+            {remoteCopy.busy ? (
+              <span>
+                {remoteCopy.total
+                  ? `${Math.round((remoteCopy.done / remoteCopy.total) * 100)}% · ${formatSize(remoteCopy.done)} / ${formatSize(remoteCopy.total)}`
+                  : `${formatSize(remoteCopy.done)} sent`}
+              </span>
+            ) : null}
+            <button
+              type="submit"
+              className={toolbarClass}
+              disabled={remoteCopy.busy || !remoteCopy.destPath.trim()}
+            >
+              {remoteCopy.busy ? "Copying…" : "Copy"}
+            </button>
+            {remoteCopy.busy ? (
+              <button
+                type="button"
+                className={toolbarClass}
+                onClick={() => remoteCopyAbort.current?.abort()}
+              >
+                Cancel
+              </button>
+            ) : (
+              <button type="button" className={toolbarClass} onClick={() => setRemoteCopy(null)}>
+                Cancel
+              </button>
+            )}
+            <span className="w-full text-[11px] opacity-70">
+              File bytes are relayed through ServerUI’s backend memory, never saved on this Mac.
+              Existing destination files are not overwritten.
+            </span>
+          </form>
+        ) : null}
         {notice ? (
           <div
             className={`flex items-center justify-between border-b px-4 py-2 text-[12px] ${
@@ -1200,6 +1343,7 @@ export function FilesApp({ payload }: { payload?: WindowPayload }) {
         <DownloadPanel
           items={downloads.items}
           onRetry={downloads.retryFailed}
+          onCancel={downloads.cancel}
           onDismiss={downloads.dismiss}
         />
         <div className="relative flex min-h-0 flex-1 flex-col">
@@ -1256,6 +1400,7 @@ export function FilesApp({ payload }: { payload?: WindowPayload }) {
             setDialog({ type: "rename", value: menu.entry.name, from: menu.entry.path })
           }
           onCopy={() => copyToClipboard("copy", menuTargets(menu.entry))}
+          onCopyToServer={() => menu.entry && openRemoteCopy(menu.entry)}
           onCut={() => copyToClipboard("cut", menuTargets(menu.entry))}
           onPaste={paste}
           onNewFolder={newFolder}

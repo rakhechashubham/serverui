@@ -35,6 +35,15 @@ describe("AddServerModal", () => {
   it("submits a password-authenticated server", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
+    testDraft
+      .mockResolvedValueOnce({
+        ok: false,
+        latencyMs: 12,
+        code: "host_key_unverified",
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        error: "Verify the SSH host fingerprint before trusting this server.",
+      })
+      .mockResolvedValueOnce({ ok: true, latencyMs: 42 });
 
     render(<AddServerModal onClose={() => undefined} onSubmit={onSubmit} />);
 
@@ -42,6 +51,9 @@ describe("AddServerModal", () => {
     await user.type(screen.getByLabelText("Host / IP"), "203.0.113.10");
     await user.type(screen.getByLabelText("Username"), "deploy");
     await user.type(screen.getByLabelText("Password"), "example-pass");
+    await user.click(screen.getByRole("button", { name: "Save Server" }));
+    await user.click(await screen.findByRole("button", { name: "Trust fingerprint and test" }));
+    await screen.findByText("Connection successful · Latency 42 ms");
     await user.click(screen.getByRole("button", { name: "Save Server" }));
 
     expect(onSubmit).toHaveBeenCalledWith(
@@ -54,6 +66,7 @@ describe("AddServerModal", () => {
         authType: "password",
         password: "example-pass",
         privateKey: undefined,
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       },
       { connect: false },
     );
@@ -62,6 +75,15 @@ describe("AddServerModal", () => {
   it("offers save and connect on first-run", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue(undefined);
+    testDraft
+      .mockResolvedValueOnce({
+        ok: false,
+        latencyMs: 12,
+        code: "host_key_unverified",
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        error: "Verify the SSH host fingerprint before trusting this server.",
+      })
+      .mockResolvedValueOnce({ ok: true, latencyMs: 42 });
 
     render(<AddServerModal connectAfterSave onClose={() => undefined} onSubmit={onSubmit} />);
 
@@ -70,8 +92,16 @@ describe("AddServerModal", () => {
     await user.type(screen.getByLabelText("Username"), "deploy");
     await user.type(screen.getByLabelText("Password"), "example-pass");
     await user.click(screen.getByRole("button", { name: "Save & Connect" }));
+    await user.click(await screen.findByRole("button", { name: "Trust fingerprint and test" }));
+    await screen.findByText("Connection successful · Latency 42 ms");
+    await user.click(screen.getByRole("button", { name: "Save & Connect" }));
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.any(Object), { connect: true });
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hostKeyFingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      }),
+      { connect: true },
+    );
   });
 
   it("switches to the private key form", async () => {

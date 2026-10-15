@@ -20,6 +20,7 @@ type Store interface {
 	Get(ctx context.Context, id string) (Record, error)
 	List(ctx context.Context) ([]Record, error)
 	Update(ctx context.Context, rec Record) error
+	AssignGroup(ctx context.Context, ids []string, groupName string) error
 	Delete(ctx context.Context, id string) error
 	GetCredential(ctx context.Context, serverID string) (Credential, error)
 	UpsertCredential(ctx context.Context, cred Credential) error
@@ -68,10 +69,10 @@ func (s *SQLStore) Create(ctx context.Context, rec Record, cred Credential) erro
 	}
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx, s.q(`
-		INSERT INTO servers (id, name, host, port, username, auth_type, status, last_error, last_seen, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-	`), rec.ID, rec.Name, rec.Host, rec.Port, rec.Username, rec.AuthType, rec.Status, rec.LastError,
-		s.timeArg(rec.LastSeen), s.timeArg(rec.CreatedAt), s.timeArg(rec.UpdatedAt))
+		INSERT INTO servers (id, name, group_name, host, port, username, auth_type, status, last_error, last_seen, created_at, updated_at, host_key_fingerprint)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+	`), rec.ID, rec.Name, rec.GroupName, rec.Host, rec.Port, rec.Username, rec.AuthType, rec.Status, rec.LastError,
+		s.timeArg(rec.LastSeen), s.timeArg(rec.CreatedAt), s.timeArg(rec.UpdatedAt), rec.HostKeyFingerprint)
 	if err != nil {
 		return err
 	}
@@ -88,7 +89,7 @@ func (s *SQLStore) Create(ctx context.Context, rec Record, cred Credential) erro
 
 func (s *SQLStore) Get(ctx context.Context, id string) (Record, error) {
 	row := s.db.QueryRowContext(ctx, s.q(`
-		SELECT id, name, host, port, username, auth_type, status, last_error, last_seen, created_at, updated_at
+		SELECT id, name, group_name, host, port, username, auth_type, status, last_error, last_seen, created_at, updated_at, host_key_fingerprint
 		FROM servers WHERE id = $1
 	`), id)
 	rec, err := s.scanRecord(row)
@@ -100,7 +101,7 @@ func (s *SQLStore) Get(ctx context.Context, id string) (Record, error) {
 
 func (s *SQLStore) List(ctx context.Context) ([]Record, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, host, port, username, auth_type, status, last_error, last_seen, created_at, updated_at
+		SELECT id, name, group_name, host, port, username, auth_type, status, last_error, last_seen, created_at, updated_at, host_key_fingerprint
 		FROM servers ORDER BY created_at ASC
 	`)
 	if err != nil {
@@ -121,10 +122,10 @@ func (s *SQLStore) List(ctx context.Context) ([]Record, error) {
 func (s *SQLStore) Update(ctx context.Context, rec Record) error {
 	res, err := s.db.ExecContext(ctx, s.q(`
 		UPDATE servers
-		SET name=$2, host=$3, port=$4, username=$5, auth_type=$6, status=$7, last_error=$8, last_seen=$9, updated_at=$10
+		SET name=$2, group_name=$3, host=$4, port=$5, username=$6, auth_type=$7, status=$8, last_error=$9, last_seen=$10, updated_at=$11, host_key_fingerprint=$12
 		WHERE id=$1
-	`), rec.ID, rec.Name, rec.Host, rec.Port, rec.Username, rec.AuthType, rec.Status, rec.LastError,
-		s.timeArg(rec.LastSeen), s.timeArg(rec.UpdatedAt))
+	`), rec.ID, rec.Name, rec.GroupName, rec.Host, rec.Port, rec.Username, rec.AuthType, rec.Status, rec.LastError,
+		s.timeArg(rec.LastSeen), s.timeArg(rec.UpdatedAt), rec.HostKeyFingerprint)
 	if err != nil {
 		return err
 	}
@@ -133,6 +134,25 @@ func (s *SQLStore) Update(ctx context.Context, rec Record) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (s *SQLStore) AssignGroup(ctx context.Context, ids []string, groupName string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, id := range ids {
+		res, err := tx.ExecContext(ctx, s.q(`UPDATE servers SET group_name=$2, updated_at=$3 WHERE id=$1`), id, groupName, s.timeArg(time.Now().UTC()))
+		if err != nil {
+			return err
+		}
+		count, _ := res.RowsAffected()
+		if count == 0 {
+			return ErrNotFound
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *SQLStore) Delete(ctx context.Context, id string) error {
@@ -211,7 +231,7 @@ func (s *SQLStore) timeArg(v any) any {
 func (s *SQLStore) scanRecord(row rowScanner) (Record, error) {
 	var rec Record
 	var lastSeen, created, updated any
-	err := row.Scan(&rec.ID, &rec.Name, &rec.Host, &rec.Port, &rec.Username, &rec.AuthType, &rec.Status, &rec.LastError, &lastSeen, &created, &updated)
+	err := row.Scan(&rec.ID, &rec.Name, &rec.GroupName, &rec.Host, &rec.Port, &rec.Username, &rec.AuthType, &rec.Status, &rec.LastError, &lastSeen, &created, &updated, &rec.HostKeyFingerprint)
 	if err != nil {
 		return Record{}, err
 	}

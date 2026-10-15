@@ -1,6 +1,7 @@
 package servers
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net"
 	"strings"
@@ -22,6 +23,9 @@ func Validate(input Input, requireSecret bool) error {
 	if utf8.RuneCountInString(name) > maxNameLength {
 		return fmt.Errorf("server name is too long")
 	}
+	if utf8.RuneCountInString(strings.TrimSpace(input.GroupName)) > 48 {
+		return fmt.Errorf("server group name is too long")
+	}
 	return ValidateConnection(input, requireSecret)
 }
 
@@ -32,6 +36,13 @@ func ValidateConnection(input Input, requireSecret bool) error {
 	}
 	if input.Port < 1 || input.Port > 65535 {
 		return fmt.Errorf("invalid port")
+	}
+	if input.HostKeyFingerprint != "" {
+		encoded := strings.TrimPrefix(input.HostKeyFingerprint, "SHA256:")
+		decoded, err := base64.RawStdEncoding.DecodeString(encoded)
+		if !strings.HasPrefix(input.HostKeyFingerprint, "SHA256:") || err != nil || len(decoded) != 32 {
+			return fmt.Errorf("invalid SSH host key fingerprint")
+		}
 	}
 	username := strings.TrimSpace(input.Username)
 	if username == "" {
@@ -81,6 +92,7 @@ func validateHost(host string) error {
 
 func Normalize(input Input) Input {
 	input.Name = strings.TrimSpace(input.Name)
+	input.GroupName = strings.TrimSpace(input.GroupName)
 	input.Host = strings.TrimSpace(input.Host)
 	input.Username = strings.TrimSpace(input.Username)
 	input.AuthType = strings.TrimSpace(input.AuthType)
@@ -92,5 +104,6 @@ func Normalize(input Input) Input {
 	}
 	input.Password = strings.TrimSpace(input.Password)
 	input.PrivateKey = strings.TrimSpace(input.PrivateKey)
+	input.HostKeyFingerprint = strings.TrimSpace(input.HostKeyFingerprint)
 	return input
 }

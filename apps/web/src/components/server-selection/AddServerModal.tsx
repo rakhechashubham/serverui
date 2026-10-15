@@ -20,6 +20,9 @@ type TestState = {
   key: string;
   status: "testing" | "ok" | "fail";
   message?: string;
+  code?: string;
+  hostKeyFingerprint?: string;
+  expectedHostKeyFingerprint?: string;
 };
 
 const NEUTRAL_BUTTON = "border-white/14 text-white/85 hover:bg-white/8 hover:text-white";
@@ -61,12 +64,14 @@ export function AddServerModal({
   const fieldId = useId();
   const firstField = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(server?.name || "");
+  const [groupName, setGroupName] = useState(server?.groupName || "");
   const [address, setAddress] = useState(server?.address || "");
   const [port, setPort] = useState(String(server?.sshPort || 22));
   const [username, setUsername] = useState(server?.username || "");
   const [auth, setAuth] = useState<AuthMethod>(server?.authType || "password");
   const [password, setPassword] = useState("");
   const [privateKey, setPrivateKey] = useState("");
+  const [hostKeyFingerprint, setHostKeyFingerprint] = useState(server?.hostKeyFingerprint || "");
   // Errors show after a field is edited and left, or for all fields on Save/Test.
   const [touched, setTouched] = useState<Set<ServerField>>(new Set());
   const [edited, setEdited] = useState<Set<ServerField>>(new Set());
@@ -142,7 +147,7 @@ export function AddServerModal({
     return false;
   }
 
-  async function runTest() {
+  async function runTest(acceptedFingerprint?: string) {
     if (!check("connection")) return;
     testAbort.current?.abort();
     const controller = new AbortController();
@@ -156,6 +161,9 @@ export function AddServerModal({
           port: Number(port),
           username: username.trim(),
           authType: auth,
+          ...(acceptedFingerprint || hostKeyFingerprint
+            ? { hostKeyFingerprint: acceptedFingerprint || hostKeyFingerprint }
+            : {}),
           password: auth === "password" ? password.trim() || undefined : undefined,
           privateKey: auth === "private_key" ? privateKey.trim() || undefined : undefined,
         },
@@ -163,11 +171,27 @@ export function AddServerModal({
         { signal: controller.signal },
       );
       // The backend's failure text is already user-facing, so show it as-is.
-      setTest(
-        result.ok
-          ? { key, status: "ok", message: formatConnectionTestMessage(true, result.latencyMs) }
-          : { key, status: "fail", message: result.error || "Connection failed." },
-      );
+      if (result.code === "host_key_unverified" || result.code === "host_key_changed") {
+        setTest({
+          key,
+          status: "fail",
+          code: result.code,
+          hostKeyFingerprint: result.hostKeyFingerprint,
+          expectedHostKeyFingerprint: result.expectedHostKeyFingerprint,
+          message: result.error || "Verify the SSH host fingerprint before trusting this server.",
+        });
+      } else {
+        setTest(
+          result.ok
+            ? { key, status: "ok", message: formatConnectionTestMessage(true, result.latencyMs) }
+            : {
+                key,
+                status: "fail",
+                code: result.code,
+                message: result.error || "Connection failed.",
+              },
+        );
+      }
     } catch (err) {
       if (controller.signal.aborted) return;
       setTest({
@@ -181,9 +205,14 @@ export function AddServerModal({
   async function submit(event: FormEvent, connect?: boolean) {
     event.preventDefault();
     if (!check("save")) return;
+    if (!hostKeyFingerprint) {
+      await runTest();
+      return;
+    }
     await onSubmit(
       {
         name: name.trim(),
+        ...(editing || groupName.trim() ? { groupName: groupName.trim() } : {}),
         address: address.trim(),
         hostname: address.trim(),
         sshPort: Number(port),
@@ -191,6 +220,7 @@ export function AddServerModal({
         authType: auth,
         password: password.trim() || undefined,
         privateKey: privateKey.trim() || undefined,
+        ...(hostKeyFingerprint ? { hostKeyFingerprint } : {}),
       },
       { connect },
     );
@@ -246,11 +276,29 @@ export function AddServerModal({
                 autoComplete="off"
               />
             </Field>
+            <label className="block space-y-1.5">
+              <span className="block text-[11px] font-medium uppercase tracking-[0.16em] text-white/48">
+                Group (optional)
+              </span>
+              <input
+                id={`${fieldId}-group`}
+                value={groupName}
+                maxLength={48}
+                onChange={(event) => setGroupName(event.target.value)}
+                className="sui-server-input"
+                placeholder="Production, Sandbox…"
+                autoComplete="off"
+              />
+            </label>
             <Field label="Host / IP" error={visibleErrors.host} errorId={ids("host").error}>
               <input
                 {...fieldProps("host")}
                 value={address}
-                onChange={(event) => setAddress(event.target.value)}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setAddress(next);
+                  if (next.trim() !== (server?.address || "")) setHostKeyFingerprint("");
+                }}
                 className="sui-server-input"
                 placeholder="203.0.113.10"
                 autoComplete="off"
@@ -263,7 +311,11 @@ export function AddServerModal({
               <input
                 {...fieldProps("port")}
                 value={port}
-                onChange={(event) => setPort(event.target.value)}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setPort(next);
+                  if (Number(next) !== (server?.sshPort || 22)) setHostKeyFingerprint("");
+                }}
                 className="sui-server-input"
                 inputMode="numeric"
                 placeholder="22"
@@ -362,6 +414,38 @@ export function AddServerModal({
                     : visibleTest.message}
                 </span>
               </p>
+            ) : null}
+
+            {visibleTest?.hostKeyFingerprint ? (
+              <div className="rounded-xl border border-amber-300/20 bg-amber-300/8 p-3 text-[12px] leading-5 text-amber-100/85">
+                <p className="font-medium">
+                  {visibleTest.code === "host_key_changed"
+                    ? "The server presented a different host key. Verify it before replacing the saved fingerprint."
+                    : "First connection: compare this fingerprint with the server administrator before trusting it."}
+                </p>
+                <p className="mt-1 break-all font-mono text-[11px] text-amber-50">
+                  {visibleTest.hostKeyFingerprint}
+                </p>
+                {visibleTest.expectedHostKeyFingerprint ? (
+                  <p className="mt-2 break-all text-[11px] text-amber-100/65">
+                    Saved fingerprint:{" "}
+                    <span className="font-mono">{visibleTest.expectedHostKeyFingerprint}</span>
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={busy || visibleTest.status === "testing"}
+                  onClick={() => {
+                    setHostKeyFingerprint(visibleTest.hostKeyFingerprint!);
+                    void runTest(visibleTest.hostKeyFingerprint);
+                  }}
+                  className="mt-2 rounded-full bg-amber-100/15 px-3 py-1.5 font-medium text-amber-50 transition hover:bg-amber-100/22 disabled:opacity-50"
+                >
+                  {visibleTest.code === "host_key_changed"
+                    ? "Trust new fingerprint and retest"
+                    : "Trust fingerprint and test"}
+                </button>
+              </div>
             ) : null}
 
             <button

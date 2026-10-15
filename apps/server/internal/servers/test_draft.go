@@ -12,10 +12,12 @@ import (
 const CodeSavedCredentialUnavailable = "saved_credential_unavailable"
 
 type DraftTestResult struct {
-	OK      bool   `json:"ok"`
-	Latency int64  `json:"latencyMs"`
-	Code    string `json:"code,omitempty"`
-	Error   string `json:"error,omitempty"`
+	OK                         bool   `json:"ok"`
+	Latency                    int64  `json:"latencyMs"`
+	Code                       string `json:"code,omitempty"`
+	Error                      string `json:"error,omitempty"`
+	HostKeyFingerprint         string `json:"hostKeyFingerprint,omitempty"`
+	ExpectedHostKeyFingerprint string `json:"expectedHostKeyFingerprint,omitempty"`
 }
 
 // TestDraft tests form details without saving; a blank secret reuses the saved one.
@@ -29,6 +31,9 @@ func (s *Service) TestDraft(ctx context.Context, serverID string, input Input) (
 			return DraftTestResult{}, err
 		}
 		useSaved = input.Password == "" && input.PrivateKey == "" && input.AuthType == saved.AuthType
+		if input.HostKeyFingerprint == "" && input.Host == saved.Host && input.Port == saved.Port {
+			input.HostKeyFingerprint = saved.HostKeyFingerprint
+		}
 	}
 	if err := ValidateConnection(input, !useSaved); err != nil {
 		return DraftTestResult{}, err
@@ -47,7 +52,7 @@ func (s *Service) TestDraft(ctx context.Context, serverID string, input Input) (
 		return failedDraft(err, 0), nil
 	}
 
-	cfg := sshx.Config{Host: input.Host, Port: input.Port, Username: input.Username}
+	cfg := sshx.Config{Host: input.Host, Port: input.Port, Username: input.Username, HostKeyFingerprint: input.HostKeyFingerprint}
 	log.Printf("server.test_draft host=%s port=%d saved_credential=%t", cfg.Host, cfg.Port, useSaved)
 	start := time.Now()
 	err = s.dial(cfg, auth)
@@ -67,5 +72,9 @@ func (in Input) secretValue() string {
 
 func failedDraft(err error, latency int64) DraftTestResult {
 	code, message := sshx.ClassifyError(err)
-	return DraftTestResult{OK: false, Latency: latency, Code: code, Error: message}
+	expected, presented, _ := sshx.HostKeyDetails(err)
+	return DraftTestResult{
+		OK: false, Latency: latency, Code: code, Error: message,
+		HostKeyFingerprint: presented, ExpectedHostKeyFingerprint: expected,
+	}
 }

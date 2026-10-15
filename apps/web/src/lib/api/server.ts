@@ -87,12 +87,14 @@ export type MonitorNetProcess = {
 export type ServerInfo = {
   id: string;
   name: string;
+  groupName?: string;
   hostname: string;
   status: ServerStatus;
   host: string;
   port?: number;
   username: string;
   authType?: "password" | "private_key";
+  hostKeyFingerprint?: string;
   cpuUsage: number;
   memoryUsage: number;
   diskUsage: number;
@@ -178,18 +180,23 @@ export type ServerInfo = {
 
 export type ServerWriteInput = {
   name: string;
+  groupName?: string;
   host: string;
   port: number;
   username: string;
   authType: "password" | "private_key";
   password?: string;
   privateKey?: string;
+  hostKeyFingerprint?: string;
 };
 
 export type ConnectionTestResult = {
   ok: boolean;
   latencyMs: number;
   error?: string;
+  code?: string;
+  hostKeyFingerprint?: string;
+  expectedHostKeyFingerprint?: string;
   server: ServerInfo;
 };
 
@@ -231,6 +238,13 @@ export function updateServer(id: string, input: ServerWriteInput) {
   });
 }
 
+export function assignServerGroup(serverIds: string[], groupName: string) {
+  return apiRequest<{ status: string }>("/api/servers/group", {
+    method: "POST",
+    body: JSON.stringify({ serverIds, groupName }),
+  });
+}
+
 export function deleteServer(id: string) {
   return apiRequest<{ status: string }>(`/api/servers/${id}`, {
     method: "DELETE",
@@ -247,6 +261,8 @@ export function testServerConnection(id: string) {
 export type DraftTestResult = Omit<ConnectionTestResult, "server"> & {
   /** Stable failure code from the backend, e.g. "auth_failed" or "timeout". */
   code?: string;
+  hostKeyFingerprint?: string;
+  expectedHostKeyFingerprint?: string;
 };
 
 /** Tests unsaved form details; pass serverId when editing to reuse the saved secret. */

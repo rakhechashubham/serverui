@@ -13,8 +13,8 @@ import (
 var schemaFS embed.FS
 
 // CurrentSchemaVersion is the latest migration version applied by Migrate.
-// Version 1: servers + server_credentials (+ schema_migrations bookkeeping).
-const CurrentSchemaVersion = 1
+// Version 1: servers + server_credentials. Version 2: SSH host key pins. Version 3: server groups.
+const CurrentSchemaVersion = 3
 
 // Migrate applies pending schema migrations for the active storage backend.
 // It never drops user tables or recreates the database.
@@ -31,26 +31,38 @@ func MigrateBackend(ctx context.Context, sqlDB *sql.DB, backend StorageBackend) 
 	if err != nil {
 		return err
 	}
-	if applied >= CurrentSchemaVersion {
-		return nil
+	if applied < 1 {
+		schemaFile := "schema.sql"
+		if backend == StorageSQLite {
+			schemaFile = "schema_sqlite.sql"
+		}
+		sqlBytes, err := schemaFS.ReadFile(schemaFile)
+		if err != nil {
+			return fmt.Errorf("read schema: %w", err)
+		}
+		if _, err := sqlDB.ExecContext(ctx, string(sqlBytes)); err != nil {
+			return fmt.Errorf("apply schema: %w", err)
+		}
+		if err := recordVersion(ctx, sqlDB, backend, 1); err != nil {
+			return err
+		}
+		applied = 1
 	}
-
-	schemaFile := "schema.sql"
-	if backend == StorageSQLite {
-		schemaFile = "schema_sqlite.sql"
+	if applied < 2 {
+		if _, err := sqlDB.ExecContext(ctx, `ALTER TABLE servers ADD COLUMN host_key_fingerprint TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add host key fingerprint: %w", err)
+		}
+		if err := recordVersion(ctx, sqlDB, backend, 2); err != nil {
+			return err
+		}
 	}
-	sqlBytes, err := schemaFS.ReadFile(schemaFile)
-	if err != nil {
-		return fmt.Errorf("read schema: %w", err)
-	}
-
-	// Apply idempotent CREATE IF NOT EXISTS statements.
-	if _, err := sqlDB.ExecContext(ctx, string(sqlBytes)); err != nil {
-		return fmt.Errorf("apply schema: %w", err)
-	}
-
-	if err := recordVersion(ctx, sqlDB, backend, CurrentSchemaVersion); err != nil {
-		return err
+	if applied < 3 {
+		if _, err := sqlDB.ExecContext(ctx, `ALTER TABLE servers ADD COLUMN group_name TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add server group: %w", err)
+		}
+		if err := recordVersion(ctx, sqlDB, backend, 3); err != nil {
+			return err
+		}
 	}
 	return nil
 }

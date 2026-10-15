@@ -1,6 +1,9 @@
 package sshx
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 // Error codes sent to API clients with connection test results.
 const (
@@ -13,6 +16,8 @@ const (
 	CodeAuthFailed         = "auth_failed"
 	CodeInvalidPrivateKey  = "invalid_private_key"
 	CodePassphraseRequired = "passphrase_required"
+	CodeHostKeyUnverified  = "host_key_unverified"
+	CodeHostKeyChanged     = "host_key_changed"
 	CodeSSHFailed          = "ssh_failed"
 )
 
@@ -20,6 +25,13 @@ const (
 func ClassifyError(err error) (code, message string) {
 	if err == nil {
 		return "", ""
+	}
+	var hostKeyErr *HostKeyError
+	if errors.As(err, &hostKeyErr) {
+		if hostKeyErr.Expected == "" {
+			return CodeHostKeyUnverified, "Verify the SSH host fingerprint before trusting this server."
+		}
+		return CodeHostKeyChanged, "The SSH host fingerprint changed. Connection blocked until you verify and update it."
 	}
 	msg := strings.ToLower(err.Error())
 	switch {
@@ -65,6 +77,10 @@ func PublicError(err error) string {
 		return ""
 	}
 	switch code, _ := ClassifyError(err); code {
+	case CodeHostKeyUnverified:
+		return "ssh host key is not trusted"
+	case CodeHostKeyChanged:
+		return "ssh host key changed"
 	case CodePassphraseRequired:
 		return "passphrase-protected private keys are not supported yet"
 	case CodeInvalidPrivateKey:

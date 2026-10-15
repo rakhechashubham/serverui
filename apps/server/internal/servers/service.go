@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"serverui/server/internal/crypto"
 	sshx "serverui/server/internal/ssh"
@@ -22,10 +24,13 @@ type Service struct {
 }
 
 type TestResult struct {
-	OK      bool   `json:"ok"`
-	Latency int64  `json:"latencyMs"`
-	Error   string `json:"error,omitempty"`
-	Server  Public `json:"server"`
+	OK                         bool   `json:"ok"`
+	Latency                    int64  `json:"latencyMs"`
+	Error                      string `json:"error,omitempty"`
+	Code                       string `json:"code,omitempty"`
+	HostKeyFingerprint         string `json:"hostKeyFingerprint,omitempty"`
+	ExpectedHostKeyFingerprint string `json:"expectedHostKeyFingerprint,omitempty"`
+	Server                     Public `json:"server"`
 }
 
 func NewService(store Store, box crypto.Cipher) *Service {
@@ -94,15 +99,17 @@ func (s *Service) Create(ctx context.Context, input Input) (Public, error) {
 
 	now := time.Now().UTC()
 	rec := Record{
-		ID:        newID(),
-		Name:      input.Name,
-		Host:      input.Host,
-		Port:      input.Port,
-		Username:  input.Username,
-		AuthType:  input.AuthType,
-		Status:    StatusUnknown,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:                 newID(),
+		Name:               input.Name,
+		GroupName:          input.GroupName,
+		Host:               input.Host,
+		Port:               input.Port,
+		Username:           input.Username,
+		AuthType:           input.AuthType,
+		HostKeyFingerprint: input.HostKeyFingerprint,
+		Status:             StatusUnknown,
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 	cred := Credential{
 		ID:              newID(),
@@ -133,10 +140,14 @@ func (s *Service) Update(ctx context.Context, id string, input Input) (Public, e
 	}
 
 	existing.Name = input.Name
+	existing.GroupName = input.GroupName
 	existing.Host = input.Host
 	existing.Port = input.Port
 	existing.Username = input.Username
 	existing.AuthType = input.AuthType
+	if input.HostKeyFingerprint != "" {
+		existing.HostKeyFingerprint = input.HostKeyFingerprint
+	}
 	existing.UpdatedAt = time.Now().UTC()
 	existing.LastError = ""
 	existing.Status = StatusUnknown
@@ -170,6 +181,27 @@ func (s *Service) Update(ctx context.Context, id string, input Input) (Public, e
 	log.Printf("server.updated id=%s name=%s", existing.ID, existing.Name)
 	existing, _ = s.testAndUpdate(ctx, existing, "")
 	return s.public(existing), nil
+}
+
+func (s *Service) AssignGroup(ctx context.Context, ids []string, groupName string) error {
+	groupName = strings.TrimSpace(groupName)
+	if utf8.RuneCountInString(groupName) > 48 {
+		return fmt.Errorf("server group name is too long")
+	}
+	if len(ids) == 0 || len(ids) > 200 {
+		return fmt.Errorf("select between 1 and 200 servers")
+	}
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if strings.TrimSpace(id) == "" {
+			return fmt.Errorf("invalid server selection")
+		}
+		if _, exists := seen[id]; exists {
+			return fmt.Errorf("duplicate server selection")
+		}
+		seen[id] = struct{}{}
+	}
+	return s.store.AssignGroup(ctx, ids, groupName)
 }
 
 func (s *Service) Delete(ctx context.Context, id string) error {
@@ -253,10 +285,13 @@ func (s *Service) Test(ctx context.Context, id string) (TestResult, error) {
 		_ = s.store.Update(ctx, rec)
 		log.Printf("Server connection test failed server=%s", rec.Name)
 		return TestResult{
-			OK:      false,
-			Latency: latency.Milliseconds(),
-			Error:   rec.LastError,
-			Server:  s.public(rec),
+			OK:                         false,
+			Latency:                    latency.Milliseconds(),
+			Error:                      rec.LastError,
+			Code:                       errorCode(err),
+			HostKeyFingerprint:         hostKeyPresented(err),
+			ExpectedHostKeyFingerprint: hostKeyExpected(err),
+			Server:                     s.public(rec),
 		}, nil
 	}
 	now := time.Now().UTC()
@@ -284,11 +319,33 @@ func (s *Service) loadAuth(id string) (sshx.Config, sshx.AuthMethod, error) {
 		return sshx.Config{}, nil, err
 	}
 	cfg := sshx.Config{
-		Host:     rec.Host,
-		Port:     rec.Port,
-		Username: rec.Username,
+		Host:               rec.Host,
+		Port:               rec.Port,
+		Username:           rec.Username,
+		HostKeyFingerprint: rec.HostKeyFingerprint,
 	}
 	return cfg, auth, nil
+}
+
+func errorCode(err error) string {
+	code, _ := sshx.ClassifyError(err)
+	return code
+}
+
+func hostKeyExpected(err error) string {
+	expected, _, ok := sshx.HostKeyDetails(err)
+	if !ok {
+		return ""
+	}
+	return expected
+}
+
+func hostKeyPresented(err error) string {
+	_, presented, ok := sshx.HostKeyDetails(err)
+	if !ok {
+		return ""
+	}
+	return presented
 }
 
 // savedAuth loads and decrypts the stored credential for rec.
@@ -325,7 +382,7 @@ func (s *Service) secret(input Input, required bool) (string, error) {
 }
 
 func (s *Service) testAndUpdate(ctx context.Context, rec Record, secret string) (Record, error) {
-	cfg := sshx.Config{Host: rec.Host, Port: rec.Port, Username: rec.Username}
+	cfg := sshx.Config{Host: rec.Host, Port: rec.Port, Username: rec.Username, HostKeyFingerprint: rec.HostKeyFingerprint}
 	var auth sshx.AuthMethod
 	var err error
 	if secret != "" {

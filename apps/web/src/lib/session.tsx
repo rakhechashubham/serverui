@@ -18,6 +18,7 @@ import {
   listServers,
   testServerConnection,
   updateServer as updateServerApi,
+  assignServerGroup as assignServerGroupApi,
   type ConnectionTestResult,
   type ServerInfo,
 } from "@/src/lib/api/server";
@@ -34,6 +35,7 @@ type SessionContextValue = {
   selectServer: (server: Server) => boolean;
   addServer: (input: NewServerInput) => Promise<Server>;
   updateServer: (id: string, input: NewServerInput) => Promise<Server>;
+  assignServerGroup: (serverIds: string[], groupName: string) => Promise<void>;
   deleteServer: (id: string) => Promise<void>;
   testConnection: (id: string) => Promise<ConnectionTestResult>;
   completeBoot: () => void;
@@ -65,12 +67,14 @@ export function toSessionServer(info: ServerInfo): Server {
   return {
     id: info.id,
     name: info.name || hostname,
+    groupName: info.groupName || "",
     hostname,
     address: info.host,
     status: asStatus(info.status),
     sshPort: info.port,
     username: info.username,
     authType: info.authType,
+    hostKeyFingerprint: info.hostKeyFingerprint,
     error: info.error,
     lastSeen: info.lastSeen,
   };
@@ -79,12 +83,14 @@ export function toSessionServer(info: ServerInfo): Server {
 function toWriteInput(input: NewServerInput) {
   return {
     name: input.name.trim(),
+    groupName: input.groupName?.trim() || "",
     host: input.address.trim(),
     port: input.sshPort,
     username: input.username.trim(),
     authType: input.authType,
     password: input.password,
     privateKey: input.privateKey,
+    hostKeyFingerprint: input.hostKeyFingerprint,
   };
 }
 
@@ -158,6 +164,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setServers((current) => current.map((item) => (item.id === id ? updated : item)));
     setSelectedServer((current) => (current?.id === id ? updated : current));
     return updated;
+  }, []);
+
+  const assignServerGroup = useCallback(async (serverIds: string[], groupName: string) => {
+    await assignServerGroupApi(serverIds, groupName);
+    setServers((current) =>
+      current.map((server) =>
+        serverIds.includes(server.id) ? { ...server, groupName: groupName.trim() } : server,
+      ),
+    );
   }, []);
 
   const deleteServer = useCallback(
@@ -244,6 +259,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       selectServer,
       addServer,
       updateServer,
+      assignServerGroup,
       deleteServer,
       testConnection,
       completeBoot,
@@ -263,6 +279,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       selectServer,
       addServer,
       updateServer,
+      assignServerGroup,
       deleteServer,
       testConnection,
       completeBoot,

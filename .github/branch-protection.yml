@@ -1,0 +1,108 @@
+# GitHub Branch Protection Configuration for ServerUI
+# Apply via GitHub UI (Settings > Branches > Branch protection rules)
+# Or via GitHub CLI:
+#   gh api --method PUT repos/{owner}/{repo}/branches/main/protection --input .github/branch-protection.json
+
+# =============================================================================
+# MAIN BRANCH PROTECTION
+# =============================================================================
+# Branch pattern: main
+#
+# Required settings:
+# ☑ Require a pull request before merging
+#   ☑ Require approvals: 1
+#   ☑ Dismiss stale PR approvals when new commits are pushed
+#   ☑ Require review from code owners (if CODEOWNERS exists)
+#
+# ☑ Require status checks to pass before merging
+#   ☑ Require branches to be up to date before merging
+#   Required status checks:
+#     - Frontend
+#     - Backend
+#     - Docker build
+#     - Secret files
+#     - Validate PR title (from pr-title.yml workflow)
+#
+# ☑ Require conversation resolution before merging
+#
+# ☑ Require signed commits (RECOMMENDED)
+#   - All commits must be GPG/Sigstore signed
+#   - Contributors should configure: git config commit.gpgSign true
+#
+# ☑ Require linear history
+#   - No merge commits; use squash or rebase merge
+#
+# ☑ Require deployments to succeed (if applicable)
+#
+# ☑ Lock branch (optional, for release branches)
+#
+# ☑ Do not allow bypassing the above settings
+#
+# =============================================================================
+# BRANCH NAMING CONVENTION (via GitHub Settings > General > Branch naming)
+# =============================================================================
+# Pattern: ^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)/[a-z0-9-]+$
+# Examples: feat/files, fix/ssh-timeout, docs/setup-guide
+#
+# =============================================================================
+# AUTO-DELETE MERGED BRANCHES
+# =============================================================================
+# Repository Settings > General > Pull Requests:
+# ☑ Automatically delete head branches
+#
+# =============================================================================
+# ALLOWED MERGE METHODS
+# =============================================================================
+# Repository Settings > General > Pull Requests:
+# ☑ Allow squash merging (RECOMMENDED - creates clean linear history)
+# ☐ Allow merge commits (creates merge commits)
+# ☐ Allow rebase merging (rewrites history)
+# Default: Squash merging
+#
+# =============================================================================
+# BRANCH PROTECTION FOR RELEASE BRANCHES (if using Git Flow)
+# =============================================================================
+# Pattern: release/*
+# Same rules as main, plus:
+# - Restrict who can push to matching branches (release managers only)
+#
+# =============================================================================
+# JSON FOR GITHUB CLI (gh api)
+# =============================================================================
+# Save as .github/branch-protection.json and run:
+# gh api --method PUT repos/{owner}/{repo}/branches/main/protection --input .github/branch-protection.json
+#
+# {
+#   "required_status_checks": {
+#     "strict": true,
+#     "contexts": [
+#       "Frontend",
+#       "Backend",
+#       "Docker build",
+#       "Secret files",
+#       "Validate PR title"
+#     ]
+#   },
+#   "enforce_admins": false,
+#   "required_pull_request_reviews": {
+#     "dismissal_restrictions": {},
+#     "dismiss_stale_reviews": true,
+#     "require_code_owner_reviews": false,
+#     "required_approving_review_count": 1
+#   },
+#   "restrictions": null,
+#   "required_linear_history": true,
+#   "allow_force_pushes": false,
+#   "allow_deletions": false,
+#   "required_conversation_resolution": true,
+#   "required_signatures": true,
+#   "lock_branch": false,
+#   "required_deployment_environments": []
+# }
+
+# =============================================================================
+# AUTOMATION: AUTO-MERGE WITH LINEAR HISTORY
+# =============================================================================
+# When all checks pass and approvals are met, enable auto-merge:
+# gh pr merge --squash --auto <pr-number>
+# This preserves linear history on main.

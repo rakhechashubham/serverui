@@ -36,6 +36,8 @@ COMPOSE_DESKTOP_DB := docker compose -f $(DOCKER_DIR)/docker-compose.yml -f $(DO
 	desktop-build-windows-x64 desktop-build-linux-x64 desktop-build-msix \
 	desktop-e2e desktop-version desktop-release-helpers-test \
 	docker-up docker-down docker-build docker-logs docker-ps docker-tui \
+	changelog \
+	demo demo-reset demo-logs demo-seed \
 	ensure-docker ensure-env ensure-web-deps ensure-desktop-deps ensure-lazydocker ensure-rust
 
 help:
@@ -63,6 +65,14 @@ help:
 	@echo "  make build-server    Build Go server binary only"
 	@echo "  make setup-env       Create .env and generate an encryption key if needed"
 	@echo "  make hooks           Configure local Git hooks (core.hooksPath=.githooks)"
+	@echo "  make changelog       Generate changelog from conventional commits since last tag"
+	@echo ""
+	@echo "Demo Mode (Try ServerUI in <2 min without a real server)"
+	@echo ""
+	@echo "  make demo            Start full stack + demo SSH server + seed demo server"
+	@echo "  make demo-reset      Stop demo, remove demo data, start fresh"
+	@echo "  make demo-logs       Show demo stack logs"
+	@echo "  make demo-seed       Seed demo server into existing database"
 	@echo ""
 	@echo "Docker Commands"
 	@echo ""
@@ -130,6 +140,16 @@ hooks:
 	@git config core.hooksPath .githooks
 	@echo "Git hooks path set to .githooks"
 	@echo "Local commits will run format-check, lint, and tests."
+
+changelog:
+	@last_tag=$$(git describe --tags --abbrev=0 2>/dev/null || echo ""); \
+	if [ -n "$$last_tag" ]; then \
+		echo "Generating changelog since $$last_tag..."; \
+		git log $$last_tag..HEAD --pretty=format:"- %s (%h)" --reverse; \
+	else \
+		echo "No tags found. Generating full changelog..."; \
+		git log --pretty=format:"- %s (%h)" --reverse; \
+	fi
 
 start: ensure-docker setup-env ensure-env
 	@echo "Building ServerUI..."
@@ -330,3 +350,54 @@ docker-logs: ensure-docker
 
 docker-ps: ensure-docker
 	$(COMPOSE_DEV) ps
+
+# Demo Mode Compose: adds ssh-demo to the dev stack
+COMPOSE_DEMO := docker compose -f $(DOCKER_DIR)/docker-compose.yml -f $(DOCKER_DIR)/docker-compose.dev.yml -f $(DOCKER_DIR)/docker-compose.demo.yml --env-file $(ENV_FILE)
+
+demo: ensure-docker setup-env ensure-env
+	@echo "Starting ServerUI Demo Mode..."
+	@echo ""
+	@echo "This starts:"
+	@echo "  - PostgreSQL (database)"
+	@echo "  - Go API server"
+	@echo "  - Next.js web UI"
+	@echo "  - SSH demo server (linuxserver/openssh-server on port 2222)"
+	@echo ""
+	@echo "The demo server 'Demo Server (localhost)' will be pre-configured with:"
+	@echo "  Host: host.docker.internal (Docker Desktop) / 172.17.0.1 (Linux)"
+	@echo "  Port: 2222"
+	@echo "  User: demo"
+	@echo "  Password: demo"
+	@echo ""
+	@trap 'echo; echo "Stopping demo environment..."; $(COMPOSE_DEMO) down; echo "Demo containers removed. Database volume preserved."' EXIT INT TERM HUP; \
+	$(COMPOSE_DEMO) up -d --build --remove-orphans; \
+	echo; \
+	echo "Waiting for services to be ready..."; \
+	sleep 3; \
+	echo "Seeding demo server into database..."; \
+	go -C $(SERVER_DIR) run ./cmd/seed-demo --postgres $(if $(HOST),--host=$(HOST)); \
+	echo; \
+	echo "  Web:    http://localhost:$${WEB_PORT:-3000}"; \
+	echo "  API:    http://localhost:$${HTTP_PORT:-8080}"; \
+	echo "  SSH:    ssh demo@localhost -p 2222  (password: demo)"; \
+	echo; \
+	echo "Opening LazyDocker..."; \
+	if [ ! -t 1 ]; then \
+		echo "lazydocker needs an interactive terminal."; \
+		echo "Run make demo from your own shell."; \
+		exit 1; \
+	fi; \
+	( cd $(DOCKER_DIR) && COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml:docker-compose.demo.yml lazydocker )
+
+demo-reset: ensure-docker
+	@echo "Resetting Demo Mode (removes demo data)..."
+	$(COMPOSE_DEMO) down -v
+	@echo "Demo containers and volumes removed."
+	@echo "Run 'make demo' to start fresh."
+
+demo-logs: ensure-docker
+	$(COMPOSE_DEMO) logs --tail=200
+
+demo-seed: ensure-env
+	@echo "Seeding demo server into database..."
+	go -C $(SERVER_DIR) run ./cmd/seed-demo --postgres $(if $(HOST),--host=$(HOST))

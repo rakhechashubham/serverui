@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "driver.js/dist/driver.css";
 
 :root,
 html[data-theme="dark"] {
@@ -1056,6 +1057,79 @@ body {
 .sui-traffic-light {
   background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.04));
   box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.22);
+}
+
+/* ============================================================================
+   Theme Transition - Smooth 150ms color transitions on theme change
+   ============================================================================ */
+
+/* Global theme transition for all elements using CSS custom properties */
+*,
+*::before,
+*::after {
+  transition:
+    background-color var(--transition-fast, 150ms) ease-out,
+    border-color var(--transition-fast, 150ms) ease-out,
+    color var(--transition-fast, 150ms) ease-out,
+    fill var(--transition-fast, 150ms) ease-out,
+    stroke var(--transition-fast, 150ms) ease-out,
+    box-shadow var(--transition-fast, 150ms) ease-out,
+    outline-color var(--transition-fast, 150ms) ease-out;
+}
+
+/* Disable transitions during theme switch for specific elements that should be instant */
+.sui-dock-icon,
+.sui-dock-tooltip,
+.sui-toolbar-tip {
+  transition: none !important;
+}
+
+/* Ensure reduced motion preference is respected for theme transitions */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
+
+/* Theme toggle specific transitions */
+.sui-theme-toggle-button {
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out,
+    box-shadow 150ms ease-out,
+    transform 150ms ease-out;
+}
+
+/* Smooth transition for the theme toggle dropdown */
+.sui-theme-dropdown {
+  animation: theme-dropdown-in 120ms ease-out;
+}
+
+@keyframes theme-dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Smooth transition for theme toggle options */
+.sui-theme-option {
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
+}
+
+.sui-theme-option:focus-visible {
+  outline: none;
+  ring: 2px;
+  ring-offset: 1px;
 }
 
 /* Light windows keep the same utilities, but white ink becomes dark ink.

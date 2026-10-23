@@ -458,6 +458,16 @@ export function Dock({ autoHideOverride = false }: DockProps) {
             const badge = id === "info" ? 0 : (activity.badges[id] ?? 0);
             const badgeLabel = formatDockBadge(badge);
 
+            // Tour attributes for first-run experience
+            const tourAttrs =
+              id === "terminal"
+                ? { "data-tour": "dock-terminal" }
+                : id === "files"
+                  ? { "data-tour": "dock-files" }
+                  : id === "dashboard"
+                    ? { "data-tour": "dock-monitor" }
+                    : {};
+
             return (
               <button
                 key={id}
@@ -477,6 +487,7 @@ export function Dock({ autoHideOverride = false }: DockProps) {
                 onPointerMove={(event) => onItemPointerMove(event, index)}
                 onPointerUp={(event) => onItemPointerUp(event)}
                 onPointerCancel={(event) => onItemPointerUp(event)}
+                {...tourAttrs}
               >
                 <span
                   ref={(node) => {

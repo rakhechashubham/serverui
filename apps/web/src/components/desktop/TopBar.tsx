@@ -94,6 +94,7 @@ export function TopBar() {
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-label="Open server menu"
+            data-tour="server-switcher"
           >
             <span className="truncate font-medium">
               {servers.length === 0 ? "No servers" : `${connected} connected`}

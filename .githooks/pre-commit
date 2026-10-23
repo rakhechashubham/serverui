@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Pre-commit hook: runs format-check, lint, and tests
+# Configured via: make hooks  (sets core.hooksPath=.githooks)
+
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"

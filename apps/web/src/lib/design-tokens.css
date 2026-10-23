@@ -1,0 +1,655 @@
+/**
+ * ServerUI Design Tokens
+ * Semantic color system with Light/Dark/System theme support
+ * Compatible with TailwindCSS v4 (CSS-first config)
+ */
+
+:root {
+  /* ==========================================================================
+     SPACING SCALE (4px base unit)
+     ========================================================================== */
+  --space-0: 0;
+  --space-1: 0.25rem; /* 4px  */
+  --space-2: 0.5rem; /* 8px  */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.25rem; /* 20px */
+  --space-6: 1.5rem; /* 24px */
+  --space-8: 2rem; /* 32px */
+  --space-10: 2.5rem; /* 40px */
+  --space-12: 3rem; /* 48px */
+  --space-16: 4rem; /* 64px */
+  --space-20: 5rem; /* 80px */
+  --space-24: 6rem; /* 96px */
+
+  /* ==========================================================================
+     TYPOGRAPHY SCALE
+     ========================================================================== */
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.875rem; /* 14px */
+  --text-base: 1rem; /* 16px */
+  --text-lg: 1.125rem; /* 18px */
+  --text-xl: 1.25rem; /* 20px */
+  --text-2xl: 1.5rem; /* 24px */
+  --text-3xl: 1.875rem; /* 30px */
+  --text-4xl: 2.25rem; /* 36px */
+  --text-5xl: 3rem; /* 48px */
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.1;
+  --line-height-snug: 1.375;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.625;
+
+  /* ==========================================================================
+     BORDER RADIUS
+     ========================================================================== */
+  --radius-none: 0;
+  --radius-xs: 0.125rem; /* 2px  */
+  --radius-sm: 0.25rem; /* 4px  */
+  --radius-md: 0.375rem; /* 6px  */
+  --radius-lg: 0.5rem; /* 8px  */
+  --radius-xl: 0.75rem; /* 12px */
+  --radius-2xl: 1rem; /* 16px */
+  --radius-full: 9999px;
+
+  /* ==========================================================================
+     SHADOWS
+     ========================================================================== */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 10px 10px rgba(0, 0, 0, 0.04);
+  --shadow-2xl: 0 25px 50px rgba(0, 0, 0, 0.25);
+
+  /* Colored shadows for accent */
+  --shadow-primary: 0 4px 14px rgba(10, 132, 255, 0.35);
+  --shadow-primary-lg: 0 10px 30px rgba(10, 132, 255, 0.4);
+
+  /* ==========================================================================
+     TRANSITIONS
+     ========================================================================== */
+  --transition-fast: 100ms ease;
+  --transition-base: 160ms ease;
+  --transition-slow: 240ms ease;
+  --transition-slower: 320ms ease;
+
+  /* ==========================================================================
+     Z-INDEX SCALE
+     ========================================================================== */
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-fixed: 300;
+  --z-modal-backdrop: 400;
+  --z-modal: 500;
+  --z-popover: 600;
+  --z-tooltip: 700;
+  --z-toast: 800;
+}
+
+/* ==========================================================================
+   SEMANTIC COLOR TOKENS - DARK THEME (DEFAULT)
+   These map to the existing globals.css values for backwards compatibility
+   ========================================================================== */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* ---- Core Backgrounds ---- */
+  --color-bg-primary: #1b2430; /* --background */
+  --color-bg-secondary: rgba(28, 28, 30, 0.92); /* --app-bg */
+  --color-bg-tertiary: rgba(255, 255, 255, 0.04); /* --app-bg-2 */
+  --color-bg-sidebar: rgba(22, 22, 24, 0.9); /* --app-sidebar */
+  --color-bg-window: rgba(28, 28, 30, 0.94); /* --window-bg */
+  --color-bg-menu: rgba(32, 32, 34, 0.92); /* --menu-bg */
+  --color-bg-finder-sidebar: rgba(40, 40, 43, 0.94); /* --finder-sidebar */
+  --color-bg-finder-toolbar: #2a2a2c; /* --finder-toolbar */
+  --color-bg-finder-content: #1e1e1e; /* --finder-content */
+  --color-bg-dock: rgba(70, 70, 76, 0.32); /* --dock-glass */
+  --color-bg-dock-hover: rgba(80, 80, 86, 0.38); /* --dock-glass-hover */
+  --color-bg-topbar: rgba(0, 0, 0, 0.28); /* --topbar-bg */
+  --color-bg-toggle: rgba(255, 255, 255, 0.12); /* --toggle-bg */
+  --color-bg-card: rgba(255, 255, 255, 0.08); /* --app-card */
+  --color-bg-input: rgba(255, 255, 255, 0.16); /* --app-input */
+  --color-bg-search: rgba(255, 255, 255, 0.08); /* --finder-search */
+  --color-bg-terminal: rgba(10, 10, 12, 0.82); /* .sui-terminal */
+
+  /* ---- Core Foregrounds (Text) ---- */
+  --color-fg-primary: #edf2f7; /* --foreground */
+  --color-fg-secondary: #f2f2f7; /* --app-fg */
+  --color-fg-title: #ffffff; /* --app-title */
+  --color-fg-muted: #c7c7cc; /* --app-muted */
+  --color-fg-topbar: rgba(255, 255, 255, 0.92); /* --topbar-fg */
+  --color-fg-topbar-muted: rgba(255, 255, 255, 0.62); /* --topbar-muted */
+  --color-fg-window-title: rgba(255, 255, 255, 0.86); /* --window-title */
+  --color-fg-menu: #f2f2f7; /* --menu-fg */
+  --color-fg-finder: #e8e8ed; /* --finder-text */
+  --color-fg-finder-muted: #98989f; /* --finder-muted */
+  --color-fg-finder-section: rgba(235, 235, 245, 0.42); /* --finder-section */
+
+  /* ---- Borders ---- */
+  --color-border-primary: rgba(255, 255, 255, 0.12); /* --app-border */
+  --color-border-window: rgba(255, 255, 255, 0.16); /* --window-border */
+  --color-border-menu: rgba(255, 255, 255, 0.12); /* --menu-border */
+  --color-border-finder: rgba(255, 255, 255, 0.09); /* --finder-hairline */
+  --color-border-finder-control: rgba(255, 255, 255, 0.1); /* --finder-control-border */
+  --color-border-dock: rgba(255, 255, 255, 0.16); /* --dock-border */
+  --color-border-toggle: rgba(255, 255, 255, 0.12); /* implicit from toggle-bg */
+
+  /* ---- Interactive States ---- */
+  --color-hover: rgba(255, 255, 255, 0.08); /* --app-hover */
+  --color-hover-finder: rgba(255, 255, 255, 0.06); /* --finder-nav-hover */
+  --color-active: rgba(255, 255, 255, 0.12); /* --app-selected / --finder-nav-active */
+  --color-selected: rgba(10, 132, 255, 0.28); /* --app-selected */
+  --color-finder-selected: rgba(255, 255, 255, 0.1); /* --finder-tile-selected */
+  --color-control: rgba(255, 255, 255, 0.06); /* --finder-control */
+  --color-control-hover: rgba(255, 255, 255, 0.12); /* --finder-control-hover */
+  --color-segment: rgba(0, 0, 0, 0.28); /* --finder-segment */
+  --color-segment-active: rgba(255, 255, 255, 0.16); /* --finder-segment-active */
+
+  /* ---- Brand / Accent ---- */
+  --color-primary: #0a84ff; /* --finder-accent (dark) */
+  --color-primary-hover: #1a8fff;
+  --color-primary-active: #0066cc;
+  --color-primary-fg: #ffffff;
+
+  /* ---- Toggle Specific ---- */
+  --color-toggle-active: rgba(255, 255, 255, 0.92); /* --toggle-active */
+  --color-toggle-active-fg: #111111; /* --toggle-active-fg */
+
+  /* ---- Window Header ---- */
+  --color-window-header: rgba(255, 255, 255, 0.04); /* --window-header */
+  --color-window-header-inactive: rgba(255, 255, 255, 0.02); /* --window-header-inactive */
+
+  /* ---- Traffic Lights ---- */
+  --color-traffic-idle: #4c4c51; /* --traffic-idle */
+  --color-traffic-close: #ff5f57;
+  --color-traffic-minimize: #febc2e;
+  --color-traffic-zoom: #28ca42;
+
+  /* ---- Desktop Scrim ---- */
+  --color-desktop-scrim: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.22),
+    transparent,
+    rgba(0, 0, 0, 0.28)
+  ); /* --desktop-scrim */
+
+  /* ---- Finder Stripe ---- */
+  --color-finder-stripe: rgba(255, 255, 255, 0.035); /* --finder-stripe */
+
+  /* ---- Focus Ring ---- */
+  --color-focus-ring: rgba(255, 255, 255, 0.08);
+  --color-focus-ring-primary: rgba(10, 132, 255, 0.4);
+
+  /* ---- Glass/Backdrop ---- */
+  --glass-blur-sm: blur(8px) saturate(1.2);
+  --glass-blur-md: blur(16px) saturate(1.2);
+  --glass-blur-lg: blur(20px) saturate(1.25);
+  --glass-blur-xl: blur(24px) saturate(1.8);
+
+  /* ---- Window Glass ---- */
+  --window-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 24px 80px rgba(0, 0, 0, 0.38);
+}
+
+/* ==========================================================================
+   SEMANTIC COLOR TOKENS - LIGHT THEME
+   ========================================================================== */
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* ---- Core Backgrounds ---- */
+  --color-bg-primary: #c5d4e4; /* --background */
+  --color-bg-secondary: rgba(246, 246, 247, 0.94); /* --app-bg */
+  --color-bg-tertiary: rgba(255, 255, 255, 0.55); /* --app-bg-2 */
+  --color-bg-sidebar: rgba(236, 236, 239, 0.94); /* --app-sidebar */
+  --color-bg-window: rgba(246, 246, 247, 0.96); /* --window-bg */
+  --color-bg-menu: rgba(255, 255, 255, 0.94); /* --menu-bg */
+  --color-bg-finder-sidebar: rgba(240, 240, 242, 0.95); /* --finder-sidebar */
+  --color-bg-finder-toolbar: #f6f6f6; /* --finder-toolbar */
+  --color-bg-finder-content: #ffffff; /* --finder-content */
+  --color-bg-dock: rgba(255, 255, 255, 0.2); /* --dock-glass */
+  --color-bg-dock-hover: rgba(255, 255, 255, 0.26); /* --dock-glass-hover */
+  --color-bg-topbar: rgba(255, 255, 255, 0.58); /* --topbar-bg */
+  --color-bg-toggle: rgba(0, 0, 0, 0.08); /* --toggle-bg */
+  --color-bg-card: rgba(255, 255, 255, 0.48); /* --app-card */
+  --color-bg-input: rgba(255, 255, 255, 0.62); /* --app-input */
+  --color-bg-search: #e9e9eb; /* --finder-search */
+  --color-bg-terminal: rgba(10, 10, 12, 0.82); /* .sui-terminal (unchanged) */
+
+  /* ---- Core Foregrounds (Text) ---- */
+  --color-fg-primary: #1d1d1f; /* --foreground */
+  --color-fg-secondary: #1d1d1f; /* --app-fg */
+  --color-fg-title: #111111; /* --app-title */
+  --color-fg-muted: #6b7280; /* --app-muted */
+  --color-fg-topbar: #1d1d1f; /* --topbar-fg */
+  --color-fg-topbar-muted: rgba(29, 29, 31, 0.58); /* --topbar-muted */
+  --color-fg-window-title: #3f3f46; /* --window-title */
+  --color-fg-menu: #1d1d1f; /* --menu-fg */
+  --color-fg-finder: #1d1d1f; /* --finder-text */
+  --color-fg-finder-muted: #6e6e73; /* --finder-muted */
+  --color-fg-finder-section: #a1a1a6; /* --finder-section */
+
+  /* ---- Borders ---- */
+  --color-border-primary: rgba(0, 0, 0, 0.08); /* --app-border */
+  --color-border-window: rgba(255, 255, 255, 0.55); /* --window-border */
+  --color-border-menu: rgba(0, 0, 0, 0.1); /* --menu-border */
+  --color-border-finder: #e3e3e5; /* --finder-hairline */
+  --color-border-finder-control: #d6d6d9; /* --finder-control-border */
+  --color-border-dock: rgba(255, 255, 255, 0.38); /* --dock-border */
+  --color-border-toggle: rgba(0, 0, 0, 0.08); /* implicit from toggle-bg */
+
+  /* ---- Interactive States ---- */
+  --color-hover: rgba(14, 165, 233, 0.08); /* --app-hover */
+  --color-hover-finder: rgba(0, 0, 0, 0.04); /* --finder-nav-hover */
+  --color-active: rgba(0, 0, 0, 0.08); /* --finder-nav-active */
+  --color-selected: rgba(14, 165, 233, 0.16); /* --app-selected */
+  --color-finder-selected: rgba(0, 0, 0, 0.06); /* --finder-tile-selected */
+  --color-control: #ffffff; /* --finder-control */
+  --color-control-hover: #f2f2f4; /* --finder-control-hover */
+  --color-segment: #e9e9eb; /* --finder-segment */
+  --color-segment-active: #ffffff; /* --finder-segment-active */
+
+  /* ---- Brand / Accent ---- */
+  --color-primary: #007aff; /* --finder-accent (light) */
+  --color-primary-hover: #0066e0;
+  --color-primary-active: #0052b3;
+  --color-primary-fg: #ffffff;
+
+  /* ---- Toggle Specific ---- */
+  --color-toggle-active: #ffffff; /* --toggle-active */
+  --color-toggle-active-fg: #1d1d1f; /* --toggle-active-fg */
+
+  /* ---- Window Header ---- */
+  --color-window-header: rgba(255, 255, 255, 0.28); /* --window-header */
+  --color-window-header-inactive: rgba(255, 255, 255, 0.14); /* --window-header-inactive */
+
+  /* ---- Traffic Lights ---- */
+  --color-traffic-idle: #d1d1d6; /* --traffic-idle */
+  --color-traffic-close: #ff5f57;
+  --color-traffic-minimize: #febc2e;
+  --color-traffic-zoom: #28ca42;
+
+  /* ---- Desktop Scrim ---- */
+  --color-desktop-scrim: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.18),
+    transparent,
+    rgba(0, 0, 0, 0.12)
+  ); /* --desktop-scrim */
+
+  /* ---- Finder Stripe ---- */
+  --color-finder-stripe: #f5f5f7; /* --finder-stripe */
+
+  /* ---- Focus Ring ---- */
+  --color-focus-ring: rgba(0, 0, 0, 0.08);
+  --color-focus-ring-primary: rgba(0, 122, 255, 0.3);
+
+  /* ---- Glass/Backdrop ---- */
+  --glass-blur-sm: blur(8px) saturate(1.2);
+  --glass-blur-md: blur(16px) saturate(1.2);
+  --glass-blur-lg: blur(20px) saturate(1.25);
+  --glass-blur-xl: blur(24px) saturate(1.8);
+
+  /* ---- Window Glass ---- */
+  --window-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 24px 80px rgba(0, 0, 0, 0.12);
+}
+
+/* ==========================================================================
+   SYSTEM THEME - Respects prefers-color-scheme when no explicit theme set
+   ========================================================================== */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    /* Dark theme values are already the default on :root */
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    /* Light theme values */
+    --color-bg-primary: #c5d4e4;
+    --color-bg-secondary: rgba(246, 246, 247, 0.94);
+    --color-bg-tertiary: rgba(255, 255, 255, 0.55);
+    --color-bg-sidebar: rgba(236, 236, 239, 0.94);
+    --color-bg-window: rgba(246, 246, 247, 0.96);
+    --color-bg-menu: rgba(255, 255, 255, 0.94);
+    --color-bg-finder-sidebar: rgba(240, 240, 242, 0.95);
+    --color-bg-finder-toolbar: #f6f6f6;
+    --color-bg-finder-content: #ffffff;
+    --color-bg-dock: rgba(255, 255, 255, 0.2);
+    --color-bg-dock-hover: rgba(255, 255, 255, 0.26);
+    --color-bg-topbar: rgba(255, 255, 255, 0.58);
+    --color-bg-toggle: rgba(0, 0, 0, 0.08);
+    --color-bg-card: rgba(255, 255, 255, 0.48);
+    --color-bg-input: rgba(255, 255, 255, 0.62);
+    --color-bg-search: #e9e9eb;
+    --color-bg-terminal: rgba(10, 10, 12, 0.82);
+
+    --color-fg-primary: #1d1d1f;
+    --color-fg-secondary: #1d1d1f;
+    --color-fg-title: #111111;
+    --color-fg-muted: #6b7280;
+    --color-fg-topbar: #1d1d1f;
+    --color-fg-topbar-muted: rgba(29, 29, 31, 0.58);
+    --color-fg-window-title: #3f3f46;
+    --color-fg-menu: #1d1d1f;
+    --color-fg-finder: #1d1d1f;
+    --color-fg-finder-muted: #6e6e73;
+    --color-fg-finder-section: #a1a1a6;
+
+    --color-border-primary: rgba(0, 0, 0, 0.08);
+    --color-border-window: rgba(255, 255, 255, 0.55);
+    --color-border-menu: rgba(0, 0, 0, 0.1);
+    --color-border-finder: #e3e3e5;
+    --color-border-finder-control: #d6d6d9;
+    --color-border-dock: rgba(255, 255, 255, 0.38);
+    --color-border-toggle: rgba(0, 0, 0, 0.08);
+
+    --color-hover: rgba(14, 165, 233, 0.08);
+    --color-hover-finder: rgba(0, 0, 0, 0.04);
+    --color-active: rgba(0, 0, 0, 0.08);
+    --color-selected: rgba(14, 165, 233, 0.16);
+    --color-finder-selected: rgba(0, 0, 0, 0.06);
+    --color-control: #ffffff;
+    --color-control-hover: #f2f2f4;
+    --color-segment: #e9e9eb;
+    --color-segment-active: #ffffff;
+
+    --color-primary: #007aff;
+    --color-primary-hover: #0066e0;
+    --color-primary-active: #0052b3;
+    --color-primary-fg: #ffffff;
+
+    --color-toggle-active: #ffffff;
+    --color-toggle-active-fg: #1d1d1f;
+
+    --color-window-header: rgba(255, 255, 255, 0.28);
+    --color-window-header-inactive: rgba(255, 255, 255, 0.14);
+
+    --color-traffic-idle: #d1d1d6;
+    --color-traffic-close: #ff5f57;
+    --color-traffic-minimize: #febc2e;
+    --color-traffic-zoom: #28ca42;
+
+    --color-desktop-scrim: linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.18),
+      transparent,
+      rgba(0, 0, 0, 0.12)
+    );
+
+    --color-finder-stripe: #f5f5f7;
+
+    --color-focus-ring: rgba(0, 0, 0, 0.08);
+    --color-focus-ring-primary: rgba(0, 122, 255, 0.3);
+
+    --window-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 24px 80px rgba(0, 0, 0, 0.12);
+  }
+}
+
+/* ==========================================================================
+   TAILWIND V4 THEME INTEGRATION
+   Maps semantic tokens to Tailwind's --color-* namespace
+   ========================================================================== */
+@theme inline {
+  /* Core colors */
+  --color-bg-primary: var(--color-bg-primary);
+  --color-bg-secondary: var(--color-bg-secondary);
+  --color-bg-tertiary: var(--color-bg-tertiary);
+  --color-bg-sidebar: var(--color-bg-sidebar);
+  --color-bg-window: var(--color-bg-window);
+  --color-bg-menu: var(--color-bg-menu);
+  --color-bg-finder-sidebar: var(--color-bg-finder-sidebar);
+  --color-bg-finder-toolbar: var(--color-bg-finder-toolbar);
+  --color-bg-finder-content: var(--color-bg-finder-content);
+  --color-bg-dock: var(--color-bg-dock);
+  --color-bg-dock-hover: var(--color-bg-dock-hover);
+  --color-bg-topbar: var(--color-bg-topbar);
+  --color-bg-toggle: var(--color-bg-toggle);
+  --color-bg-card: var(--color-bg-card);
+  --color-bg-input: var(--color-bg-input);
+  --color-bg-search: var(--color-bg-search);
+  --color-bg-terminal: var(--color-bg-terminal);
+
+  --color-fg-primary: var(--color-fg-primary);
+  --color-fg-secondary: var(--color-fg-secondary);
+  --color-fg-title: var(--color-fg-title);
+  --color-fg-muted: var(--color-fg-muted);
+  --color-fg-topbar: var(--color-fg-topbar);
+  --color-fg-topbar-muted: var(--color-fg-topbar-muted);
+  --color-fg-window-title: var(--color-fg-window-title);
+  --color-fg-menu: var(--color-fg-menu);
+  --color-fg-finder: var(--color-fg-finder);
+  --color-fg-finder-muted: var(--color-fg-finder-muted);
+  --color-fg-finder-section: var(--color-fg-finder-section);
+
+  --color-border-primary: var(--color-border-primary);
+  --color-border-window: var(--color-border-window);
+  --color-border-menu: var(--color-border-menu);
+  --color-border-finder: var(--color-border-finder);
+  --color-border-finder-control: var(--color-border-finder-control);
+  --color-border-dock: var(--color-border-dock);
+
+  --color-hover: var(--color-hover);
+  --color-hover-finder: var(--color-hover-finder);
+  --color-active: var(--color-active);
+  --color-selected: var(--color-selected);
+  --color-finder-selected: var(--color-finder-selected);
+  --color-control: var(--color-control);
+  --color-control-hover: var(--color-control-hover);
+  --color-segment: var(--color-segment);
+  --color-segment-active: var(--color-segment-active);
+
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-active: var(--color-primary-active);
+  --color-primary-fg: var(--color-primary-fg);
+
+  --color-toggle-active: var(--color-toggle-active);
+  --color-toggle-active-fg: var(--color-toggle-active-fg);
+
+  --color-window-header: var(--color-window-header);
+  --color-window-header-inactive: var(--color-window-header-inactive);
+
+  --color-traffic-idle: var(--color-traffic-idle);
+  --color-traffic-close: var(--color-traffic-close);
+  --color-traffic-minimize: var(--color-traffic-minimize);
+  --color-traffic-zoom: var(--color-traffic-zoom);
+
+  --color-desktop-scrim: var(--color-desktop-scrim);
+  --color-finder-stripe: var(--color-finder-stripe);
+
+  --color-focus-ring: var(--color-focus-ring);
+  --color-focus-ring-primary: var(--color-focus-ring-primary);
+
+  /* Spacing */
+  --spacing-0: var(--space-0);
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-8: var(--space-8);
+  --spacing-10: var(--space-10);
+  --spacing-12: var(--space-12);
+  --spacing-16: var(--space-16);
+  --spacing-20: var(--space-20);
+  --spacing-24: var(--space-24);
+
+  /* Typography */
+  --text-xs: var(--text-xs);
+  --text-sm: var(--text-sm);
+  --text-base: var(--text-base);
+  --text-lg: var(--text-lg);
+  --text-xl: var(--text-xl);
+  --text-2xl: var(--text-2xl);
+  --text-3xl: var(--text-3xl);
+  --text-4xl: var(--text-4xl);
+  --text-5xl: var(--text-5xl);
+
+  --font-weight-normal: var(--font-weight-normal);
+  --font-weight-medium: var(--font-weight-medium);
+  --font-weight-semibold: var(--font-weight-semibold);
+  --font-weight-bold: var(--font-weight-bold);
+
+  --leading-tight: var(--line-height-tight);
+  --leading-snug: var(--line-height-snug);
+  --leading-normal: var(--line-height-normal);
+  --leading-relaxed: var(--line-height-relaxed);
+
+  /* Border radius */
+  --radius-none: var(--radius-none);
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-full: var(--radius-full);
+
+  /* Shadows */
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+  --shadow-primary: var(--shadow-primary);
+  --shadow-primary-lg: var(--shadow-primary-lg);
+
+  /* Transitions */
+  --transition-fast: var(--transition-fast);
+  --transition-base: var(--transition-base);
+  --transition-slow: var(--transition-slow);
+  --transition-slower: var(--transition-slower);
+
+  /* Z-index */
+  --z-dropdown: var(--z-dropdown);
+  --z-sticky: var(--z-sticky);
+  --z-fixed: var(--z-fixed);
+  --z-modal-backdrop: var(--z-modal-backdrop);
+  --z-modal: var(--z-modal);
+  --z-popover: var(--z-popover);
+  --z-tooltip: var(--z-tooltip);
+  --z-toast: var(--z-toast);
+
+  /* Fonts */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ==========================================================================
+   UTILITY CLASSES (for non-Tailwind usage)
+   ========================================================================== */
+.bg-primary {
+  background-color: var(--color-bg-primary);
+}
+.bg-secondary {
+  background-color: var(--color-bg-secondary);
+}
+.bg-tertiary {
+  background-color: var(--color-bg-tertiary);
+}
+.bg-sidebar {
+  background-color: var(--color-bg-sidebar);
+}
+.bg-window {
+  background-color: var(--color-bg-window);
+}
+.bg-menu {
+  background-color: var(--color-bg-menu);
+}
+.bg-card {
+  background-color: var(--color-bg-card);
+}
+.bg-input {
+  background-color: var(--color-bg-input);
+}
+.bg-toggle {
+  background-color: var(--color-bg-toggle);
+}
+.bg-dock {
+  background-color: var(--color-bg-dock);
+}
+
+.text-primary {
+  color: var(--color-fg-primary);
+}
+.text-secondary {
+  color: var(--color-fg-secondary);
+}
+.text-title {
+  color: var(--color-fg-title);
+}
+.text-muted {
+  color: var(--color-fg-muted);
+}
+.text-topbar {
+  color: var(--color-fg-topbar);
+}
+.text-topbar-muted {
+  color: var(--color-fg-topbar-muted);
+}
+
+.border-primary {
+  border-color: var(--color-border-primary);
+}
+.border-window {
+  border-color: var(--color-border-window);
+}
+.border-finder {
+  border-color: var(--color-border-finder);
+}
+
+.hover-bg:hover {
+  background-color: var(--color-hover);
+}
+.active-bg {
+  background-color: var(--color-active);
+}
+.selected-bg {
+  background-color: var(--color-selected);
+}
+
+.glass-sm {
+  backdrop-filter: var(--glass-blur-sm);
+  -webkit-backdrop-filter: var(--glass-blur-sm);
+}
+.glass-md {
+  backdrop-filter: var(--glass-blur-md);
+  -webkit-backdrop-filter: var(--glass-blur-md);
+}
+.glass-lg {
+  backdrop-filter: var(--glass-blur-lg);
+  -webkit-backdrop-filter: var(--glass-blur-lg);
+}
+.glass-xl {
+  backdrop-filter: var(--glass-blur-xl);
+  -webkit-backdrop-filter: var(--glass-blur-xl);
+}
+
+.window-glass {
+  background-color: var(--color-bg-window);
+  border-color: var(--color-border-window);
+  box-shadow: var(--window-glass-shadow);
+  backdrop-filter: var(--glass-blur-lg);
+  -webkit-backdrop-filter: var(--glass-blur-lg);
+}
+
+.transition-fast {
+  transition: all var(--transition-fast);
+}
+.transition-base {
+  transition: all var(--transition-base);
+}
+.transition-slow {
+  transition: all var(--transition-slow);
+}

@@ -207,11 +207,72 @@ make start
 format, lint, and tests. Hooks can be bypassed; CI is the real gate.
 
 Then open [http://localhost:3000](http://localhost:3000). The API listens on
-[http://localhost:8080](http://localhost:8080).
+[http://localhost:8080](http://http://localhost:8080).
 
 Add a server in the UI (name, host, SSH port, username, password or private key).
 ServerUI tests SSH from the Go container, stores the encrypted secret, and connects
 when you choose **Connect**.
+
+## Try the Demo (no real server needed)
+
+Want to explore ServerUI without provisioning a VPS or configuring SSH keys?
+Start the built-in demo mode — it spins up a local SSH server with sample files
+and pre-configures a demo server in the UI.
+
+```bash
+git clone https://github.com/rakhechashubham/serverui.git
+cd serverui
+cp .env.example .env
+make setup-env
+make demo
+```
+
+This single command starts:
+- PostgreSQL database
+- Go API server
+- Next.js web UI
+- **SSH demo server** (linuxserver/openssh-server) on port 2222
+
+The demo server **"Demo Server (localhost)"** is automatically created with:
+- **Host:** `host.docker.internal` (resolves to your machine from Docker on Docker Desktop Mac/Windows)
+- **Port:** `2222`
+- **User:** `demo`
+- **Password:** `demo`
+
+> **Linux users:** `host.docker.internal` is not available by default on Linux. The demo will still start, but the SSH connection from the Go container to the SSH demo container will fail. To fix this, either:
+> - Run `make demo-seed --host=172.17.0.1` after `make demo` (uses Docker bridge gateway), or
+> - Add `host.docker.internal` to `/etc/hosts` pointing to your host IP, or
+> - Use Docker's `--add-host=host.docker.internal:host-gateway` (requires Docker 20.10+)
+
+Open [http://localhost:3000](http://localhost:3000) — you'll land directly on the
+desktop with the demo server connected. An interactive guided tour highlights:
+- **Server Switcher** (top bar) — switch between servers
+- **Terminal** (dock) — full SSH terminal with PTY
+- **File Manager** (dock) — SFTP file browser with sample directories
+- **Monitor** (dock) — live CPU, memory, disk, and network metrics
+
+Sample directories on the demo SSH server:
+- `/home/demo/projects` — example project files
+- `/var/log` — system logs
+- `/etc` — configuration files
+
+You can also SSH directly for testing:
+```bash
+ssh demo@localhost -p 2222  # password: demo
+```
+
+### Demo commands
+
+| Command | Description |
+|---------|-------------|
+| `make demo` | Start full demo stack (Postgres + API + Web + SSH demo) |
+| `make demo-reset` | Stop demo, remove demo data, start fresh |
+| `make demo-logs` | Show demo stack logs |
+| `make demo-seed` | Re-seed demo server into existing database |
+| `make demo-seed HOST=172.17.0.1` | Re-seed with custom host (Linux Docker) |
+
+The demo stack preserves the PostgreSQL volume between runs. Run `make demo-reset`
+when you want a completely clean slate.
 
 ## Environment configuration
 

@@ -52,24 +52,28 @@ type Input struct {
 }
 
 type Public struct {
-	ID         string     `json:"id"`
-	Name       string     `json:"name"`
-	Host       string     `json:"host"`
-	Port       int        `json:"port"`
-	Username   string     `json:"username"`
-	AuthType   string     `json:"authType"`
-	IconID     string     `json:"iconId"`
-	CustomIcon bool       `json:"customIcon"`
-	Status     string     `json:"status"`
-	Error      string     `json:"error,omitempty"`
-	Connected  bool       `json:"connected"`
-	LastSeen   *time.Time `json:"lastSeen,omitempty"`
-	CreatedAt  time.Time  `json:"createdAt"`
-	UpdatedAt  time.Time  `json:"updatedAt"`
+	ID             string     `json:"id"`
+	Name           string     `json:"name"`
+	Host           string     `json:"host"`
+	Port           int        `json:"port"`
+	Username       string     `json:"username"`
+	AuthType       string     `json:"authType"`
+	IconID         string     `json:"iconId"`
+	CustomIcon     bool       `json:"customIcon"`
+	Status         string     `json:"status"`
+	Error          string     `json:"error,omitempty"`          // legacy short message
+	ErrorCode      string     `json:"errorCode,omitempty"`      // machine-readable code
+	ErrorHint      string     `json:"errorHint,omitempty"`      // actionable hint
+	ErrorDocs      string     `json:"errorDocs,omitempty"`      // docs URL
+	ErrorRetryable bool       `json:"errorRetryable,omitempty"` // whether retry might help
+	Connected      bool       `json:"connected"`
+	LastSeen       *time.Time `json:"lastSeen,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
 }
 
 func (r Record) Public() Public {
-	return Public{
+	pub := Public{
 		ID:         r.ID,
 		Name:       r.Name,
 		Host:       r.Host,
@@ -84,4 +88,10 @@ func (r Record) Public() Public {
 		CreatedAt:  r.CreatedAt,
 		UpdatedAt:  r.UpdatedAt,
 	}
+	// Populate structured error fields if we have a last error
+	if r.LastError != "" {
+		// We don't have the structured error on Record, but we can infer from status
+		// For now, leave empty - the API layer should enrich from TestResult or Manager
+	}
+	return pub
 }

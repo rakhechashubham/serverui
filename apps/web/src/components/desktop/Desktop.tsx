@@ -13,11 +13,14 @@ import { WindowManagerProvider, useWindowManager } from "@/src/components/window
 import { AuraDesktop } from "@/src/components/desktop/AuraDesktop";
 import { useAppearance } from "@/src/lib/appearance";
 import { WallpaperBackdrop } from "@/src/lib/wallpaper";
+import { TourProvider } from "@/src/components/desktop/Tour";
 
 export function Desktop() {
   return (
     <WindowManagerProvider>
-      <DesktopSwitch />
+      <TourProvider>
+        <DesktopSwitch />
+      </TourProvider>
     </WindowManagerProvider>
   );
 }
